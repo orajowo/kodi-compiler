@@ -100,6 +100,19 @@ jobs:
       # NOTE: PipeWire build step removed — not required for Kodi X11 on Elementary OS.
       # If you want PipeWire in future, re-add a dedicated PipeWire build step.
 
+      - name: Install Meson & Ninja (needed by FindDav1d / dav1d probe)
+        run: |
+          set -euo pipefail
+          # Ensure pip is available (you already install python3-pip in dependencies,
+          # but keep this defensive)
+          python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "PATH=$PATH"
+          echo "meson: $(command -v meson || echo 'not-found')"
+          meson --version || true
+          ninja --version || true
+
+
       - name: Configure, build and install Kodi into staging
         env:
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
