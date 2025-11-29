@@ -201,16 +201,16 @@ jobs:
             install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
           else
             cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
-#!/bin/sh
-set -e
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database -q
-fi
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-  gtk-update-icon-cache -f /usr/share/icons/hicolor || true
-fi
-exit 0
-POSTINST_EOF
+            #!/bin/sh
+            set -e
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+            fi
+            exit 0
+            POSTINST_EOF
             chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
           fi
 
