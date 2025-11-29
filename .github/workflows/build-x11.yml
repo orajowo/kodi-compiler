@@ -232,7 +232,7 @@ jobs:
             -DENABLE_INTERNAL_TAGLIB=ON \
             \
             # Testing/tools: (OFF di CI release build kecuali kamu butuh unit tests)
-            -DENABLE_INTERNAL_GTEST=OFF \
+            -DENABLE_INTERNAL_GTEST=ON \
             \
             # Platform/features (sesuaikan sesuai kebutuhan)
             -DENABLE_ALSA=ON \
