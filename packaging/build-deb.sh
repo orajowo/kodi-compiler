@@ -123,33 +123,26 @@ PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
 echo "Building ${OUT_DIR}/${PKG_NAME} ..."
 fakeroot dpkg-deb --build "${PKG_DIR}" "${OUT_DIR}/${PKG_NAME}"
 
-# run dpkg-shlibdeps to compute ${shlibs:Depends} if you want to refine control automatically:
-# This is optional and may require dpkg-dev installed on runner.
 # optional: compute shared library dependencies using dpkg-shlibdeps
+# Instead of extracting the .deb (which can create root-owned files), run dpkg-shlibdeps
+# directly against the packaged tree (PKG_DIR). This avoids creating /tmp/deb-unpack.* and
+# avoids permission errors.
 if command -v dpkg-shlibdeps >/dev/null 2>&1; then
   echo "Running dpkg-shlibdeps to compute shared library dependencies (optional)"
-  # create temporary unpack dir
-  TMP_UNPACK="$(mktemp -d "${TMPDIR:-/tmp}/deb-unpack.XXXX")"
-  # extract package into TMP_UNPACK
-  dpkg-deb -x "${OUT_DIR}/${PKG_NAME}" "${TMP_UNPACK}"
-
-  # Ensure we (the runner) own the extracted files so we can remove them later.
-  # This avoids "rm: Permission denied" when files are root-owned.
-  # use sudo if needed (CI usually allows sudo)
-  if [ "$(id -u)" -ne 0 ]; then
-    sudo chown -R "$(id -u):$(id -g)" "${TMP_UNPACK}" || true
+  BIN_PATH="${PKG_DIR}${PREFIX}/usr/bin/kodi"
+  if [ -x "${BIN_PATH}" ]; then
+    # dpkg-shlibdeps expects a path to one or more binaries; -O prints the dependency string
+    # Append the resolved shlibs to control file (non-fatal)
+    echo " -> computing shlibs for: ${BIN_PATH}"
+    dpkg-shlibdeps -O "${BIN_PATH}" >> "${DEBIAN_DIR}/control" 2>/dev/null || {
+      echo "dpkg-shlibdeps failed (non-fatal), continuing..."
+    }
   else
-    chown -R "$(id -u):$(id -g)" "${TMP_UNPACK}" || true
+    echo "Binary not found or not executable at ${BIN_PATH}; skipping dpkg-shlibdeps"
   fi
-
-  # run dpkg-shlibdeps on the binary (append resulting shlibs to control if available)
-  # Note: dpkg-shlibdeps can fail for many reasons; keep it non-fatal
-  dpkg-shlibdeps -O "${TMP_UNPACK}${PREFIX}/usr/bin/kodi" >> "${DEBIAN_DIR}/control" 2>/dev/null || true
-
-  # cleanup the temp unpack dir (we own it now, so removal should succeed)
-  rm -rf "${TMP_UNPACK}" || true
+else
+  echo "dpkg-shlibdeps not found; skipping optional shared-lib dependency scan"
 fi
-
 
 echo "Package created: ${OUT_DIR}/${PKG_NAME}"
 # cleanup handled by trap
