@@ -8,7 +8,7 @@ on:
 jobs:
   build-deb:
     name: Build Kodi and create .deb (Elementary OS 8 / Intel / X11)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     env:
       REPO: xbmc/xbmc
@@ -24,14 +24,14 @@ jobs:
 
       - name: Clone xbmc/xbmc (shallow)
         run: |
-          git clone --depth 1 https://github.com/xbmc/xbmc.git xbmc
+          git clone --depth 1 --branch 22.0a2-Piers https://github.com/xbmc/xbmc.git xbmc
 
       - name: Install build & packaging dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config git python3 python3-pip \
-            autoconf automake libtool gettext curl meson \
+            autoconf automake libtool gettext curl \
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev \
@@ -40,13 +40,27 @@ jobs:
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
             libva-dev libva-drm2 libva-x11-2 vainfo \
             libvdpau-dev libva-glx2 \
+            libsystemd-dev \
+            libavahi-client-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libopus-dev \
+            libsndfile1-dev \
+            libfftw3-dev \
+            libmysofa-dev \
+            libcanberra-dev \
+            libusb-1.0-0-dev \
+            libvulkan-dev \
+            libwebrtc-audio-processing-dev \
+            libjack-jackd2-dev \
+            libreadline-dev \
             dpkg-dev fakeroot zip ccache || true
 
       - name: Build PipeWire 1.5.84 (robust, use meson CLI)
         run: |
           set -euo pipefail
 
-          # ensure meson & ninja installed into user's local bin and used
+          # install meson+ninja into user's local bin and ensure it is used
           python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
           export PATH="$HOME/.local/bin:$PATH"
           echo "PATH=$PATH"
@@ -77,27 +91,23 @@ jobs:
           # remove stale meson state to avoid pickle/module mismatch
           rm -rf build meson-private || true
 
-          # Use meson CLI (not python3 -m meson) to avoid python module mismatch
+          # Use meson CLI (not python3 -m meson)
           meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || \
             meson setup build -Ddefault_library=shared
 
-          # Build and install using meson CLI
           meson compile -C build -v
           sudo meson install -C build
 
-          # report installed versions
           echo "pipewire: $(pkg-config --modversion pipewire 2>/dev/null || echo 'not-found')"
           echo "spa-0.2: $(pkg-config --modversion spa-0.2 2>/dev/null || echo 'not-found')"
 
       - name: Configure, build and install Kodi into staging
         env:
-          # ensure these are visible in this step
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
           LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
         run: |
           set -euo pipefail
 
-          # compute a short sha safely
           SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
           VERSION="$(date +%Y%m%d)-${SHORT_SHA}"
           echo "Building version: ${VERSION}"
@@ -126,18 +136,15 @@ jobs:
 
           ninja -j "$(nproc)"
 
-          # Correctly install into a staging dir using DESTDIR
           STAGING_DIR="${GITHUB_WORKSPACE}/staging"
           mkdir -p "${STAGING_DIR}"
           DESTDIR="${STAGING_DIR}" ninja install
 
-          # expose VERSION for following steps by writing to file
           echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
 
       - name: Prepare Debian package contents (desktop entry + scripts)
         run: |
           set -e
-          # read version computed in previous step
           VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
           PKG_DIR="${GITHUB_WORKSPACE}/kodi-deb"
           STAGING_DIR="${GITHUB_WORKSPACE}/staging"
@@ -194,16 +201,16 @@ jobs:
             install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
           else
             cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
-            #!/bin/sh
-            set -e
-            if command -v update-desktop-database >/dev/null 2>&1; then
-              update-desktop-database -q
-            fi
-            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
-            fi
-            exit 0
-            POSTINST_EOF
+#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+fi
+exit 0
+POSTINST_EOF
             chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
           fi
 
