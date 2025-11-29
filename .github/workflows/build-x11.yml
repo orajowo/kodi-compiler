@@ -1,0 +1,306 @@
+name: Build Kodi .deb for Elementary OS (Intel / X11)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: Build Kodi and create .deb (Elementary OS / X11)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+      fail-fast: false
+
+    env:
+      REPO: xbmc/xbmc
+      KODI_BRANCH: 22.0a2-Piers
+      KODI_INSTALL_PREFIX: /usr
+      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
+      LD_LIBRARY_PATH: /usr/local/lib:/usr/local/lib/x86_64-linux-gnu
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone xbmc/xbmc (Shallow, tag or branch)
+        run: |
+          set -euo pipefail
+          echo "Checking for TAG: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --tags "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found TAG: ${KODI_BRANCH}"
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+            exit 0
+          fi
+
+          echo "TAG not found, checking for BRANCH: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found BRANCH: ${KODI_BRANCH}"
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+            exit 0
+          fi
+
+          echo "Neither TAG nor BRANCH found, cloning default branch"
+          git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install build & packaging dependencies (robust)
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          sudo apt-get update
+
+          PKGS=(
+            build-essential cmake ninja-build pkg-config git python3 python3-pip
+            autoconf automake libtool gettext curl ca-certificates
+            python3-setuptools python3-wheel python3-venv
+            # X / GL / Wayland / rendering (kept for multimedia support)
+            libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
+            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev
+            # Video acceleration (VAAPI)
+            libva-dev libva-drm2 libva-x11-2 vainfo
+            # Audio / multimedia libs
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
+            # FFmpeg / libav
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+            libavfilter-dev libavdevice-dev libswresample-dev
+            # GStreamer (optional)
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav
+            gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev
+            # useful codecs / audio
+            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev
+            libsbc-dev libcanberra-dev libreadline-dev libopenal-dev
+            libjack-jackd2-dev libsamplerate0-dev libsoxr-dev
+            # system integration & discovery
+            libsystemd-dev libavahi-client-dev libusb-1.0-0-dev
+            libbluetooth-dev
+            # camera/v4l (capture)
+            libv4l-dev v4l-utils
+            # subtitles / ASS support (required)
+            libass-dev
+            # optional but useful for video playback/bluray & fonts
+            libfontconfig1-dev libbluray-dev
+            # packaging / docs / tooling
+            dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
+            # extras (from your previous list)
+            libexiv2-dev libfstrcmp-dev libiso9660-dev
+            # features that were NO in previous log
+            libcap-dev libcec-dev lirc liblircclient-dev
+            libavahi-compat-libdnssd-dev libpipewire-0.3-dev libsndio-dev
+            libvdpau-dev libmariadb-dev-compat libmariadb-dev
+            # tools sometimes required
+            meson nasm swig unzip uuid-dev zip zlib1g-dev python3-dev python3-pil
+          )
+
+          echo "Installing ${#PKGS[@]} packages..."
+          sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+
+          # Clean apt lists to reduce disk usage on CI
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get clean
+
+      - name: Install Meson & Ninja (user, available to subsequent steps)
+        run: |
+          set -euo pipefail
+
+          python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
+
+          # Ensure ~/.local/bin is available to subsequent steps
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+
+          echo "PATH=$PATH"
+          echo "meson: $(command -v meson || echo 'not-found')"
+          meson --version || true
+          echo "ninja: $(command -v ninja || echo 'not-found')"
+          ninja --version || true
+
+      - name: Configure, build and install Kodi into staging
+        env:
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
+          VERSION="$(date +%Y%m%d)-${SHORT_SHA}"
+          echo "Building version: ${VERSION}"
+
+          mkdir -p build
+          cd build
+          rm -rf * || true
+
+          # -------------------------
+          # CMake configuration
+          # -------------------------
+          # I enabled the common internal libraries here. If CMake reports any
+          # "Unknown CMake option" remove/adjust that particular -DENABLE_INTERNAL_* flag.
+          cmake -S ../xbmc -B . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
+            -DCORE_PLATFORM_NAME=x11 \
+            -DAPP_RENDER_SYSTEM=gl \
+            -DENABLE_INTERNAL_FFMPEG=ON \
+            -DENABLE_INTERNAL_DAV1D=ON \
+            -DENABLE_INTERNAL_FLATBUFFERS=ON \
+            -DENABLE_INTERNAL_FMT=ON \
+            -DENABLE_INTERNAL_CROSSGUID=ON \
+            -DENABLE_INTERNAL_TEXTPACKER=ON \
+            -DENABLE_INTERNAL_JSONSCHEMAS=ON \
+            -DENABLE_ALSA=ON \
+            -DENABLE_PULSEAUDIO=ON \
+            -DENABLE_XRANDR=ON \
+            -DENABLE_VAAPI=ON \
+            -DENABLE_VDPAU=OFF \
+            -DENABLE_AVAHI=ON \
+            -DENABLE_PIPEWIRE=ON \
+            -DENABLE_V4L=ON \
+            -DENABLE_ADDONS=ON \
+            -DENABLE_TESTS=OFF
+
+          # If CMake warns about unused variables, run: cmake -LA | grep -i internal
+
+          # parallel build with verbose output; on failure show last lines + run single-job
+          echo "Starting parallel build..."
+          ninja -v -j "$(nproc)" 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
+          if [ "${PIPESTATUS[0]}" != "0" ]; then
+            echo "=== PARALLEL BUILD FAILED: Showing last 400 lines ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
+
+            echo "=== Running single-job build to show first error ==="
+            ninja -C . -t clean || true
+            ninja -v -j1 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            echo "=== last 400 lines of single-job run ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            exit 1
+          fi
+
+          # install into staging dir using DESTDIR
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+          mkdir -p "${STAGING_DIR}"
+          DESTDIR="${STAGING_DIR}" ninja install
+
+          echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
+
+      - name: Prepare Debian package contents (desktop entry + scripts)
+        run: |
+          set -e
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          PKG_DIR="${GITHUB_WORKSPACE}/kodi-deb"
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+
+          rm -rf "${PKG_DIR}"
+          mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
+          cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
+
+          DESKTOP_DIR="${PKG_DIR}/usr/share/applications"
+          ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
+
+          cat > "${DESKTOP_DIR}/kodi.desktop" <<'DESKTOP_EOF'
+          [Desktop Entry]
+          Name=Kodi
+          GenericName=Media Center
+          Comment=Play media and manage library
+          Exec=/usr/bin/kodi %U
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Player;Video;
+          MimeType=video/*;audio/*;
+          Icon=kodi
+          StartupNotify=true
+          DESKTOP_EOF
+
+          if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
+            install -D -m 0644 "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" "${ICON_DIR}/kodi.png"
+          fi
+
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          if [ -f packaging/control.template ]; then
+            sed -e "s|%VERSION%|${VERSION}|g" \
+                -e "s|%ARCH%|amd64|g" \
+                packaging/control.template > "${PKG_DIR}/DEBIAN/control"
+          else
+            cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
+            Package: kodi
+            Version: PLACEHOLDER_VERSION
+            Section: video
+            Priority: optional
+            Architecture: amd64
+            Maintainer: Kodi Packager <noreply@example.com>
+            Description: Kodi Media Center (custom build)
+            CONTROL_EOF
+            sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
+          fi
+
+          if [ -f packaging/postinst ]; then
+            install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
+          else
+            cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
+            #!/bin/sh
+            set -e
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+            fi
+            exit 0
+            POSTINST_EOF
+            chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
+          fi
+
+          if [ -f packaging/prerm ]; then
+            install -m 0755 packaging/prerm "${PKG_DIR}/DEBIAN/prerm"
+          fi
+
+          chmod -R 0755 "${PKG_DIR}/DEBIAN"
+
+      - name: Build .deb package
+        run: |
+          set -e
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          mkdir -p out
+          PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
+          dpkg-deb --build "${GITHUB_WORKSPACE}/kodi-deb" "out/${PKG_NAME}"
+          ls -lh out
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-deb-${{ matrix.os }}
+          path: out/*.deb
+
+      - name: Create GitHub Release and upload .deb
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: out/*.deb
+          tag: build-${{ github.run_id }}-${{ matrix.os }}
+          name: kodi-deb-${{ matrix.os }}-${{ github.run_id }}
+          body: "Automated Kodi .deb build for ${matrix.os} (Intel / X11)."
