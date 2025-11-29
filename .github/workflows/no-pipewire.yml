@@ -24,16 +24,27 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Clone xbmc/xbmc (shallow, branch fallback)
+      - name: Clone xbmc/xbmc (Shallow, tag or branch)
         run: |
           set -euo pipefail
-          echo "Cloning ${REPO} branch ${KODI_BRANCH} (shallow)"
-          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+      
+          echo "Checking for TAG: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --tags "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found TAG: ${KODI_BRANCH}"
             git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
-          else
-            echo "Branch ${KODI_BRANCH} not found, cloning default branch shallow"
-            git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+            exit 0
           fi
+
+          echo "TAG not found, checking for BRANCH: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found BRANCH: ${KODI_BRANCH}"
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+            exit 0
+          fi
+      
+          echo "Neither TAG nor BRANCH found, cloning default branch"
+          git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+
 
       - name: Install build & packaging dependencies (robust)
         run: |
@@ -102,8 +113,9 @@ jobs:
 
           mkdir -p build
           cd build
+          rm -rf *
 
-          cmake -S ../xbmc -B . -G Ninja \
+          cmake ..xbmc \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
             -DCORE_PLATFORM_NAME=x11 \
@@ -124,7 +136,7 @@ jobs:
             -DENABLE_ADDONS=ON \
             -DENABLE_TESTS=OFF
 
-          ninja -j "$(nproc)"
+          cmake --build . -- -j$(getconf _NPROCESSORS_ONLN)
 
           STAGING_DIR="${GITHUB_WORKSPACE}/staging"
           mkdir -p "${STAGING_DIR}"
