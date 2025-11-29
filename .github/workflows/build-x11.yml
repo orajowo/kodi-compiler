@@ -98,7 +98,7 @@ jobs:
 
           PKGS=(
             build-essential cmake ninja-build pkg-config git python3 python3-pip
-            autoconf automake libtool gettext curl ca-certificates
+            autoconf automake libtool gettext curl ca-certificates libtool-bin
             python3-setuptools python3-wheel python3-venv
             # X / GL / Wayland / rendering (kept for multimedia support)
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
