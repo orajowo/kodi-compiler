@@ -88,7 +88,7 @@ jobs:
             libfontconfig1-dev libbluray-dev
             # packaging / docs / tooling
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
-            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev libexiv2-dev
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev libexiv2-dev libfstrcmp-dev
           )
     
           echo "Installing ${#PKGS[@]} packages..."
