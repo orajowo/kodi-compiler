@@ -230,10 +230,10 @@ jobs:
             -DENABLE_INTERNAL_EXIV2=ON \
             -DENABLE_INTERNAL_CURL=ON \
             -DENABLE_INTERNAL_TAGLIB=ON \
-            \
+            #\
             # Testing/tools: (OFF di CI release build kecuali kamu butuh unit tests)
-            -DENABLE_INTERNAL_GTEST=ON \
-            \
+            #-DENABLE_INTERNAL_GTEST=ON \
+            #\
             # Platform/features (sesuaikan sesuai kebutuhan)
             -DENABLE_ALSA=ON \
             -DENABLE_PULSEAUDIO=ON \
