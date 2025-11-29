@@ -58,13 +58,22 @@ jobs:
           meson compile -C build -v
           sudo meson install -C build
 
-          # show versions for debug
-          echo "pipewire (pkg-config):" && pkg-config --modversion pipewire || true
-          echo "spa-0.2 (pkg-config):" && pkg-config --modversion spa-0.2 || true
+          echo "pipewire: $(pkg-config --modversion pipewire 2>/dev/null || echo 'not-found')"
+          echo "spa-0.2: $(pkg-config --modversion spa-0.2 2>/dev/null || echo 'not-found')"
 
       - name: Configure, build and install Kodi into staging
+        env:
+          # ensure these are visible in this step
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
         run: |
           set -euo pipefail
+
+          # compute a short sha safely
+          SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
+          VERSION="$(date +%Y%m%d)-${SHORT_SHA}"
+          echo "Building version: ${VERSION}"
+
           mkdir -p build
           cd build
 
@@ -90,15 +99,20 @@ jobs:
           ninja -j "$(nproc)"
 
           # Correctly install into a staging dir using DESTDIR
-          STAGING_DIR="${{ github.workspace }}/staging"
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
           mkdir -p "${STAGING_DIR}"
           DESTDIR="${STAGING_DIR}" ninja install
+
+          # expose VERSION for following steps by writing to file
+          echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
 
       - name: Prepare Debian package contents (desktop entry + scripts)
         run: |
           set -e
-          STAGING_DIR="${{ github.workspace }}/staging"
-          PKG_DIR="${{ github.workspace }}/kodi-deb"
+          # read version computed in previous step
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          PKG_DIR="${GITHUB_WORKSPACE}/kodi-deb"
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
 
           rm -rf "${PKG_DIR}"
           mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
@@ -110,18 +124,18 @@ jobs:
           mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
 
           cat > "${DESKTOP_DIR}/kodi.desktop" <<'DESKTOP_EOF'
-[Desktop Entry]
-Name=Kodi
-GenericName=Media Center
-Comment=Play media and manage library
-Exec=/usr/bin/kodi %U
-Terminal=false
-Type=Application
-Categories=AudioVideo;Player;Video;
-MimeType=video/*;audio/*;
-Icon=kodi
-StartupNotify=true
-DESKTOP_EOF
+          [Desktop Entry]
+          Name=Kodi
+          GenericName=Media Center
+          Comment=Play media and manage library
+          Exec=/usr/bin/kodi %U
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Player;Video;
+          MimeType=video/*;audio/*;
+          Icon=kodi
+          StartupNotify=true
+          DESKTOP_EOF
 
           # Try to install an icon if present in built tree (common path)
           if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
@@ -131,19 +145,21 @@ DESKTOP_EOF
           # Prepare DEBIAN control and maintainer scripts
           mkdir -p "${PKG_DIR}/DEBIAN"
           if [ -f packaging/control.template ]; then
-            sed -e "s|%VERSION%|$(date +%Y%m%d)-${GITHUB_SHA::7}|g" \
+            sed -e "s|%VERSION%|${VERSION}|g" \
                 -e "s|%ARCH%|amd64|g" \
                 packaging/control.template > "${PKG_DIR}/DEBIAN/control"
           else
             cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
 Package: kodi
-Version: $(date +%Y%m%d)-${GITHUB_SHA::7}
+Version: PLACEHOLDER_VERSION
 Section: video
 Priority: optional
 Architecture: amd64
 Maintainer: Kodi Packager <noreply@example.com>
 Description: Kodi Media Center (custom build)
 CONTROL_EOF
+            # replace placeholder with real version
+            sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
           fi
 
           # If packaging scripts exist in repo, copy them; otherwise create a minimal postinst
@@ -174,9 +190,10 @@ POSTINST_EOF
       - name: Build .deb package
         run: |
           set -e
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
           mkdir -p out
-          PKG_NAME="kodi-elementary-$(date +%Y%m%d)-${GITHUB_SHA::7}_amd64.deb"
-          dpkg-deb --build "${{ github.workspace }}/kodi-deb" "out/${PKG_NAME}"
+          PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
+          dpkg-deb --build "${GITHUB_WORKSPACE}/kodi-deb" "out/${PKG_NAME}"
           ls -lh out
 
       - name: Upload .deb artifact
