@@ -130,7 +130,7 @@ jobs:
             # subtitles / ASS support (required)
             libass-dev
             # optional but useful for video playback/bluray & fonts
-            libfontconfig1-dev libbluray-dev libcdio++-dev liblzo2-dev
+            libfontconfig1-dev libbluray-dev libcdio++-dev liblzo2-dev nlohmann-json3-dev
             # packaging / docs / tooling
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
