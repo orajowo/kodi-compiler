@@ -150,15 +150,14 @@ jobs:
                 packaging/control.template > "${PKG_DIR}/DEBIAN/control"
           else
             cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
-Package: kodi
-Version: PLACEHOLDER_VERSION
-Section: video
-Priority: optional
-Architecture: amd64
-Maintainer: Kodi Packager <noreply@example.com>
-Description: Kodi Media Center (custom build)
-CONTROL_EOF
-            # replace placeholder with real version
+            Package: kodi
+            Version: PLACEHOLDER_VERSION
+            Section: video
+            Priority: optional
+            Architecture: amd64
+            Maintainer: Kodi Packager <noreply@example.com>
+            Description: Kodi Media Center (custom build)
+            CONTROL_EOF
             sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
           fi
 
@@ -167,17 +166,16 @@ CONTROL_EOF
             install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
           else
             cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
-#!/bin/sh
-set -e
-# update desktop database and icon cache
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database -q
-fi
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-  gtk-update-icon-cache -f /usr/share/icons/hicolor || true
-fi
-exit 0
-POSTINST_EOF
+            #!/bin/sh
+            set -e
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+            fi
+            exit 0
+            POSTINST_EOF
             chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
           fi
 
