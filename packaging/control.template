@@ -1,0 +1,13 @@
+Package: kodi
+Version: %VERSION%
+Section: video
+Priority: optional
+Architecture: %ARCH%
+Maintainer: Kodi Custom Builder <noreply@example.com>
+Depends: libc6 (>= 2.31), libstdc++6 (>= 10), libx11-6, libxext6, libxrandr2, libasound2, libva2, libpulse0, libglib2.0-0
+Provides: kodi
+Replaces: kodi
+Conflicts: kodi
+Description: Kodi Media Center (Custom Build for Elementary OS 8 / Intel / X11)
+ Kodi is an award-winning free and open source media player and entertainment center.
+ This custom build is optimized for Elementary OS 8.0.2, Intel GPUs, X11, VAAPI and PipeWire.
