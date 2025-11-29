@@ -269,8 +269,6 @@ jobs:
             -DENABLE_INTERNAL_EXIV2=ON
             -DENABLE_INTERNAL_CURL=ON
             -DENABLE_INTERNAL_TAGLIB=ON
-            -DENABLE_INTERNAL_BROTLI=ON
-
           
             # Testing/tools (harus ON untuk memperbaiki error "gtest target does not exist")
             -DENABLE_INTERNAL_GTEST=ON
