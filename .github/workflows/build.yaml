@@ -1,0 +1,341 @@
+name: Build f x11 (Intel / X11)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      extra_packages:
+        description: "Extra packages to install (space-separated). Packages not found will be skipped."
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  build-deb:
+    name: Build Kodi and create .deb (Elementary OS / X11)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+      fail-fast: false
+
+    env:
+      REPO: xbmc/xbmc
+      KODI_BRANCH: 22.0a2-Piers
+      KODI_INSTALL_PREFIX: /usr
+      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
+      LD_LIBRARY_PATH: /usr/local/lib:/usr/local/lib/x86_64-linux-gnu
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone xbmc/xbmc (Shallow, tag or branch)
+        run: |
+          set -euo pipefail
+          echo "Checking for TAG: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --tags "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found TAG: ${KODI_BRANCH}"
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+            exit 0
+          fi
+
+          echo "TAG not found, checking for BRANCH: ${KODI_BRANCH}"
+          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            echo "→ Found BRANCH: ${KODI_BRANCH}"
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+            exit 0
+          fi
+
+          echo "Neither TAG nor BRANCH found, cloning default branch"
+          git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install build & packaging dependencies (robust + optional extras)
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          sudo apt-get update
+
+          # Helper: check and append extra packages provided via workflow_dispatch
+          EXTRA_INPUT="${{ github.event.inputs.extra_packages }}"
+          EXTRA_TO_INSTALL=""
+          if [ -n "${EXTRA_INPUT}" ]; then
+            echo "User requested extra packages: ${EXTRA_INPUT}"
+            for p in ${EXTRA_INPUT}; do
+              if apt-cache show "$p" >/dev/null 2>&1; then
+                echo "→ Will install extra package: $p"
+                EXTRA_TO_INSTALL="${EXTRA_TO_INSTALL} $p"
+              else
+                echo "→ Skipping unavailable package: $p"
+              fi
+            done
+          else
+            echo "No extra packages requested."
+          fi
+
+          PKGS=(
+            # core build tools
+            build-essential cmake ninja-build pkg-config git python3 python3-pip
+            autoconf automake libtool libtool-bin gettext curl ca-certificates
+            python3-setuptools python3-wheel python3-venv
+            # X / GL / Wayland / rendering
+            libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
+            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev
+            # Video acceleration (VAAPI)
+            libva-dev libva-drm2 libva-x11-2 vainfo
+            # Audio / multimedia libs
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
+            libcap-dev libcec-dev lirc liblirc-dev libflatbuffers-dev
+            # FFmpeg / libav
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+            libavfilter-dev libavdevice-dev libswresample-dev
+            # GStreamer (optional)
+            libunwind-dev libdw-dev
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav
+            gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev
+            # useful codecs / audio
+            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev
+            libsbc-dev libcanberra-dev libreadline-dev libopenal-dev
+            libjack-jackd2-dev libsamplerate0-dev libsoxr-dev
+            # system integration & discovery
+            libsystemd-dev libavahi-client-dev libusb-1.0-0-dev
+            libbluetooth-dev
+            # camera/v4l (capture)
+            libv4l-dev v4l-utils
+            # subtitles / ASS support (required)
+            libass-dev
+            # optional but useful for video playback/bluray & fonts
+            libfontconfig1-dev libbluray-dev libcdio++-dev liblzo2-dev nlohmann-json3-dev libtinyxml-dev libtinyxml2-dev libbrotli-dev
+            # packaging / docs / tooling
+            dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
+            libspdlog-dev
+            # extras (from your previous list)
+            libexiv2-dev libfstrcmp-dev libiso9660-dev libtag1-dev
+            # mariadb, pipewire etc.
+            libavahi-compat-libdnssd-dev libpipewire-0.3-dev libsndio-dev
+            libvdpau-dev libmariadb-dev-compat libmariadb-dev
+            # tools sometimes required
+            meson nasm swig unzip uuid-dev zip zlib1g-dev python3-dev python3-pil
+          )
+
+          # Append any extra packages that were found to be available
+          if [ -n "${EXTRA_TO_INSTALL}" ]; then
+            echo "Appending available extra packages to install:${EXTRA_TO_INSTALL}"
+            for p in ${EXTRA_TO_INSTALL}; do
+              PKGS+=("$p")
+            done
+          fi
+
+          echo "Installing ${#PKGS[@]} packages..."
+          sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+
+          # Clean apt lists to reduce disk usage on CI
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get clean
+
+      - name: Install Meson & Ninja (user, available to subsequent steps)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "meson: $(command -v meson || echo 'not-found')"
+          meson --version || true
+          echo "ninja: $(command -v ninja || echo 'not-found')"
+          ninja --version || true
+
+      - name: Build and install libgtest (Google Test) for CI
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          echo "Installing libgtest-dev (sources) and build tools..."
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtest-dev cmake build-essential
+
+          if [ -d /usr/src/googletest ]; then
+            echo "Building googletest from /usr/src/googletest using a writable build dir..."
+            BUILD_DIR="$(mktemp -d /tmp/gtest-build-XXXX)"
+            cmake -S /usr/src/googletest -B "${BUILD_DIR}" -Dgtest_build_tests=OFF
+            cmake --build "${BUILD_DIR}" -- -j "$(nproc)"
+            sudo cmake --install "${BUILD_DIR}" --prefix=/usr || true
+            echo "Cleaning up ${BUILD_DIR}"
+            rm -rf "${BUILD_DIR}"
+          else
+            echo "/usr/src/googletest not found — fallback to download & build"
+            TMPG=$(mktemp -d)
+            pushd "${TMPG}"
+            wget -q https://github.com/google/googletest/archive/refs/tags/release-1.14.0.tar.gz -O gtest.tar.gz
+            tar xf gtest.tar.gz
+            cd googletest-release-*
+            cmake -S . -B build -Dgtest_build_tests=OFF
+            cmake --build build -- -j "$(nproc)"
+            sudo cmake --install build --prefix=/usr || true
+            popd
+            rm -rf "${TMPG}"
+          fi
+
+          echo "Verifying installed gtest artifacts..."
+          ls -l /usr/include/gtest* /usr/include/gtest || true
+          ldconfig -p | grep gtest || true
+          ls -l /usr/lib/*gtest* /usr/lib/x86_64-linux-gnu/*gtest* || true
+
+          echo "Done building/installing Google Test."
+
+      - name: Configure, build and install Kodi into staging (make)
+        env:
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
+          VERSION="$(date +%Y%m%d)-${SHORT_SHA}"
+          echo "Building version: ${VERSION}"
+
+          mkdir -p build
+          cd build
+          rm -rf * || true
+
+          # -------------------------
+          # CMake configuration
+          # -------------------------
+          CMFLAGS=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX}
+            -DCORE_PLATFORM_NAME=x11
+            -DAPP_RENDER_SYSTEM=gl
+
+            # Core: system or internal as desired
+            -DENABLE_INTERNAL_FFMPEG=ON
+            -DENABLE_INTERNAL_DAV1D=ON
+            -DENABLE_INTERNAL_FLATBUFFERS=ON
+            -DENABLE_INTERNAL_FMT=ON
+            -DENABLE_INTERNAL_CROSSGUID=ON
+            # -DENABLE_INTERNAL_TEXTPACKER=ON
+            # -DENABLE_INTERNAL_JSONSCHEMAS=ON
+
+            # Helper/optional internals
+            -DENABLE_INTERNAL_TINYXML2=ON
+            -DENABLE_INTERNAL_SPDLOG=ON
+            -DENABLE_INTERNAL_NFS=ON
+            -DENABLE_INTERNAL_PCRE2=ON
+            -DENABLE_INTERNAL_NLOHMANNJSON=ON
+            -DENABLE_INTERNAL_FSTRCMP=ON
+            -DENABLE_INTERNAL_EXIV2=ON
+            -DENABLE_INTERNAL_CURL=ON
+            -DENABLE_INTERNAL_TAGLIB=ON
+
+            # Testing/tools (ensure gtest target available via installed gtest)
+            -DENABLE_INTERNAL_GTEST=ON
+
+            # Platform/features
+            -DENABLE_ALSA=ON
+            -DENABLE_PULSEAUDIO=ON
+            -DENABLE_XRANDR=ON
+            -DENABLE_VAAPI=ON
+            -DENABLE_VDPAU=OFF
+            -DENABLE_AVAHI=ON
+            -DENABLE_PIPEWIRE=ON
+            -DENABLE_V4L=ON
+            -DENABLE_ADDONS=ON
+            -DENABLE_TESTS=OFF
+          )
+
+          # create helper to provide imported gtest targets if system lib exists
+          cat > "${GITHUB_WORKSPACE}/cmake_force_gtest_targets.cmake" <<'EOF'
+          if(NOT TARGET gtest)
+            find_path(GTEST_INCLUDE_DIR NAMES gtest/gtest.h gtest.h PATHS /usr/include /usr/local/include)
+            find_library(GTEST_LIBRARY NAMES gtest libgtest libgtest.a libgtest_main libgtest_main.a PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
+            if(GTEST_LIBRARY AND GTEST_INCLUDE_DIR)
+              add_library(gtest STATIC IMPORTED)
+              set_target_properties(gtest PROPERTIES IMPORTED_LOCATION "${GTEST_LIBRARY}")
+              target_include_directories(gtest INTERFACE "${GTEST_INCLUDE_DIR}")
+              if(NOT TARGET gtest_main)
+                add_library(gtest_main STATIC IMPORTED)
+                set_target_properties(gtest_main PROPERTIES IMPORTED_LOCATION "${GTEST_LIBRARY}")
+                target_include_directories(gtest_main INTERFACE "${GTEST_INCLUDE_DIR}")
+              endif()
+              message(STATUS "cmake_force_gtest_targets: created imported targets gtest and gtest_main -> ${GTEST_LIBRARY}")
+            else()
+              message(STATUS "cmake_force_gtest_targets: system gtest lib/header not found; no imported targets created")
+            endif()
+          endif()
+          EOF
+
+          # Run cmake using Unix Makefiles generator and include helper
+          cmake -S ../xbmc -B . -G "Unix Makefiles" -DCMAKE_PROJECT_INCLUDE="${GITHUB_WORKSPACE}/cmake_force_gtest_targets.cmake" "${CMFLAGS[@]}"
+
+          # parallel build with make; on failure show last lines + run single-job
+          echo "Starting parallel build with make..."
+          make -j "$(nproc)" 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
+          if [ "${PIPESTATUS[0]}" != "0" ]; then
+            echo "=== PARALLEL BUILD FAILED: Showing last 400 lines ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
+
+            echo "=== Running single-job build to show first error ==="
+            make -j1 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            echo "=== last 400 lines of single-job run ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            exit 1
+          fi
+
+          # install into staging dir using DESTDIR
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+          mkdir -p "${STAGING_DIR}"
+          make DESTDIR="${STAGING_DIR}" install -j1
+
+          echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
+
+      - name: Generate packaging/control.template from staging (auto-detect)
+        run: |
+          set -euo pipefail
+          chmod +x packaging/generate-control-from-staging.sh
+          packaging/generate-control-from-staging.sh "${GITHUB_WORKSPACE}/staging" "${KODI_INSTALL_PREFIX}" "$(cat ${GITHUB_WORKSPACE}/build_version.txt)" "libbluray2,libsmbclient"
+
+      - name: Run packaging script to build .deb
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          chmod +x packaging/build-deb.sh
+          packaging/build-deb.sh "${GITHUB_WORKSPACE}/staging" "${KODI_INSTALL_PREFIX}" "${GITHUB_WORKSPACE}/out" "$(cat ${GITHUB_WORKSPACE}/build_version.txt)"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-deb-${{ matrix.os }}
+          path: out/*.deb
+
+      - name: Create GitHub Release and upload .deb
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: out/*.deb
+          tag: build-${{ github.run_id }}-${{ matrix.os }}
+          name: kodi-deb-${{ matrix.os }}-${{ github.run_id }}
+          body: "Automated Kodi .deb build for ${matrix.os} (Intel / X11)."
