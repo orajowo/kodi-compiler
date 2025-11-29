@@ -26,35 +26,62 @@ jobs:
         run: |
           git clone --depth 1 --branch 22.0a2-Piers https://github.com/xbmc/xbmc.git xbmc
 
-      - name: Install build & packaging dependencies
+      - name: Install build & packaging dependencies (full)
         run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
           sudo apt-get update
+
           sudo apt-get install -y --no-install-recommends \
+            # build basics
             build-essential cmake ninja-build pkg-config git python3 python3-pip \
-            autoconf automake libtool gettext curl \
+            autoconf automake libtool gettext curl ca-certificates \
+            # meson installed via pip --user in later step; include python dev tools
+            python3-setuptools python3-wheel python3-venv \
+            # X / GL / Wayland / rendering
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
+            libvulkan-dev libvulkan1 vulkan-utils \
+            # audio basics
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev \
+            # ffmpeg / libav
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
-            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
-            libva-dev libva-drm2 libva-x11-2 vainfo \
-            libvdpau-dev libva-glx2 \
-            libsystemd-dev \
-            libavahi-client-dev \
-            libgstreamer1.0-dev \
-            libgstreamer-plugins-base1.0-dev \
-            libopus-dev \
-            libsndfile1-dev \
-            libfftw3-dev \
-            libmysofa-dev \
-            libcanberra-dev \
-            libusb-1.0-0-dev \
-            libvulkan-dev \
-            libwebrtc-audio-processing-dev \
-            libjack-jackd2-dev \
-            libreadline-dev \
-            dpkg-dev fakeroot zip ccache || true
+            libavfilter-dev libavdevice-dev libavresample-dev \
+            # gstreamer
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+            gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev \
+            # codecs / DSP / audio extras
+            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev \
+            libwebrtc-audio-processing-dev libsbc-dev libcanberra-dev \
+            libreadline-dev libopenal-dev \
+            # JACK / realtime
+            libjack-jackd2-dev libsamplerate0-dev libsoxr-dev \
+            # pipewire extras & system integration
+            libsystemd-dev libsystemd-dev libselinux-dev \
+            libavahi-client-dev libusb-1.0-0-dev \
+            # bluetooth / discovery
+            libbluetooth-dev libavahi-client-dev \
+            # video capture / camera
+            libcamera-dev libv4l-dev v4l-utils \
+            # apparmor / snap support
+            libapparmor-dev libsnapd-glib-dev \
+            # special / optional hardware support
+            libffado-dev libasound2-plugins \
+            # documentation / introspection
+            doxygen python3-sphinx python3-lxml \
+            # packaging/tooling
+            dpkg-dev fakeroot zip ccache pkg-config \
+            # misc helpful libs
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev libreadline-dev \
+            || true
+
+          # Clean apt lists to reduce disk usage (important on CI)
+          sudo rm -rf /var/lib/apt/lists/*
+
 
       - name: Build PipeWire 1.5.84 (robust, use meson CLI)
         run: |
@@ -96,7 +123,7 @@ jobs:
             meson setup build -Ddefault_library=shared
 
           meson compile -C build -v
-          sudo meson install -C build
+          sudo "$HOME/.local/bin/meson" install -C build
 
           echo "pipewire: $(pkg-config --modversion pipewire 2>/dev/null || echo 'not-found')"
           echo "spa-0.2: $(pkg-config --modversion spa-0.2 2>/dev/null || echo 'not-found')"
