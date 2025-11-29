@@ -1,0 +1,193 @@
+name: Build Kodi .deb for Elementary OS (Intel / X11)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: Build Kodi and create .deb (Elementary OS 8 / Intel / X11)
+    runs-on: ubuntu-22.04
+
+    env:
+      REPO: xbmc/xbmc
+      KODI_INSTALL_PREFIX: /usr
+      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
+      LD_LIBRARY_PATH: /usr/local/lib:/usr/local/lib/x86_64-linux-gnu
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone xbmc/xbmc (shallow)
+        run: git clone --depth 1 https://github.com/xbmc/xbmc.git xbmc
+
+      - name: Install build & packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git python3 python3-pip \
+            autoconf automake libtool gettext curl meson \
+            libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
+            libva-dev libva-drm2 libva-x11-2 vainfo \
+            libvdpau-dev libva-dev libva-glx2 \
+            dpkg-dev fakeroot zip ccache || true
+
+      - name: Build PipeWire >= 0.3.50 (optional, ensures modern PW)
+        run: |
+          set -e
+          python3 -m pip install --user "meson>=1.1.0" ninja
+          export PATH="$HOME/.local/bin:$PATH"
+
+          PW_VERSION="0.3.63"
+          PW_DIR="${RUNNER_TEMP}/pipewire-src"
+          rm -rf "$PW_DIR"
+          git clone --depth 1 --branch "v${PW_VERSION}" https://gitlab.freedesktop.org/pipewire/pipewire.git "$PW_DIR"
+          cd "$PW_DIR"
+
+          meson setup build -Ddefault_library=shared -Ddocumentation=false -Dsystemd=true -Dman=false
+          meson compile -C build -v
+          sudo meson install -C build
+
+          # show versions for debug
+          echo "pipewire (pkg-config):" && pkg-config --modversion pipewire || true
+          echo "spa-0.2 (pkg-config):" && pkg-config --modversion spa-0.2 || true
+
+      - name: Configure, build and install Kodi into staging
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          cd build
+
+          cmake -S ../xbmc -B . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
+            -DCORE_PLATFORM_NAME=x11 \
+            -DAPP_RENDER_SYSTEM=gl \
+            -DENABLE_INTERNAL_FFMPEG=ON \
+            -DENABLE_INTERNAL_FLATBUFFERS=ON \
+            -DENABLE_INTERNAL_FMT=ON \
+            -DENABLE_INTERNAL_CROSSGUID=ON \
+            -DENABLE_ALSA=ON \
+            -DENABLE_PULSEAUDIO=ON \
+            -DENABLE_XRANDR=ON \
+            -DENABLE_VAAPI=ON \
+            -DENABLE_VDPAU=OFF \
+            -DENABLE_PIPEWIRE=ON \
+            -DENABLE_V4L=ON \
+            -DENABLE_ADDONS=ON \
+            -DENABLE_TESTS=OFF
+
+          ninja -j $(nproc)
+
+          # Correctly install into a staging dir using DESTDIR
+          STAGING_DIR="${{ github.workspace }}/staging"
+          mkdir -p "${STAGING_DIR}"
+          DESTDIR="${STAGING_DIR}" ninja install
+
+      - name: Prepare Debian package contents (desktop entry + scripts)
+        run: |
+          set -e
+          STAGING_DIR="${{ github.workspace }}/staging"
+          PKG_DIR="${{ github.workspace }}/kodi-deb"
+
+          rm -rf "$PKG_DIR"
+          mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
+          cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
+
+          # Ensure desktop entry (Pantheon launcher)
+          DESKTOP_DIR="${PKG_DIR}/usr/share/applications"
+          ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
+
+          cat > "${DESKTOP_DIR}/kodi.desktop" <<'EOF'
+[Desktop Entry]
+Name=Kodi
+GenericName=Media Center
+Comment=Play media and manage library
+Exec=/usr/bin/kodi %U
+Terminal=false
+Type=Application
+Categories=AudioVideo;Player;Video;
+MimeType=video/*;audio/*;
+Icon=kodi
+StartupNotify=true
+EOF
+
+          # Try to install an icon if present in built tree (common path)
+          if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
+            install -D -m 0644 "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" "${ICON_DIR}/kodi.png"
+          fi
+
+          # Prepare DEBIAN control and maintainer scripts
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          if [ -f packaging/control.template ]; then
+            sed -e "s|%VERSION%|$(date +%Y%m%d)-${GITHUB_SHA::7}|g" \
+                -e "s|%ARCH%|amd64|g" \
+                packaging/control.template > "${PKG_DIR}/DEBIAN/control"
+          else
+            cat > "${PKG_DIR}/DEBIAN/control" <<'EOF'
+Package: kodi
+Version: $(date +%Y%m%d)-${GITHUB_SHA::7}
+Section: video
+Priority: optional
+Architecture: amd64
+Maintainer: Kodi Packager <noreply@example.com>
+Description: Kodi Media Center (custom build)
+EOF
+          fi
+
+          # If packaging scripts exist in repo, copy them; otherwise create a minimal postinst
+          if [ -f packaging/postinst ]; then
+            install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
+          else
+            cat > "${PKG_DIR}/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+# update desktop database and icon cache
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+fi
+exit 0
+EOF
+            chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
+          fi
+
+          if [ -f packaging/prerm ]; then
+            install -m 0755 packaging/prerm "${PKG_DIR}/DEBIAN/prerm"
+          fi
+
+          chmod -R 0755 "${PKG_DIR}/DEBIAN"
+
+      - name: Build .deb package
+        run: |
+          set -e
+          mkdir -p out
+          PKG_NAME="kodi-elementary-$(date +%Y%m%d)-${GITHUB_SHA::7}_amd64.deb"
+          dpkg-deb --build "${{ github.workspace }}/kodi-deb" "out/${PKG_NAME}"
+          ls -lh out
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-deb-elementary
+          path: out/*.deb
+
+      - name: Create GitHub Release and upload .deb
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: out/*.deb
+          tag: build-${{ github.run_id }}
+          name: kodi-deb-elementary-${{ github.run_id }}
+          body: "Automated Kodi .deb build for Elementary OS 8 (Intel / X11)."
