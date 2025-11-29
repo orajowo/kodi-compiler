@@ -205,7 +205,7 @@ jobs:
             -DENABLE_VAAPI=ON \
             -DENABLE_VDPAU=OFF \
             -DENABLE_AVAHI=ON \
-            -DENABLE_PIPEWIRE=OFF \
+            -DENABLE_PIPEWIRE=ON \
             -DENABLE_V4L=ON \
             -DENABLE_ADDONS=ON \
             -DENABLE_TESTS=OFF
