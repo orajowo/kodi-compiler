@@ -42,18 +42,30 @@ jobs:
             libvdpau-dev libva-glx2 \
             dpkg-dev fakeroot zip ccache || true
 
-      - name: Build PipeWire >=  1.5.84 (optional, ensures modern PW)
+      - name: Build PipeWire 1.5.84 (robust)
         run: |
-          set -e
+          set -euo pipefail
           python3 -m pip install --user "meson>=1.1.0" ninja
           export PATH="$HOME/.local/bin:$PATH"
 
           PW_VERSION="1.5.84"
-          PW_DIR="${RUNNER_TEMP}/pipewire-src"
-          rm -rf "$PW_DIR"
-          git clone --depth 1 --branch "v${PW_VERSION}" https://gitlab.freedesktop.org/pipewire/pipewire.git "$PW_DIR"
-          cd "$PW_DIR"
+          PW_REPO="https://gitlab.freedesktop.org/pipewire/pipewire.git"
+          PW_DIR="${RUNNER_TEMP:-/tmp}/pipewire-src"
+          rm -rf "${PW_DIR}"
 
+          # Prefer exact tag without 'v' (per your link), then try with 'v' prefix, else fallback
+          if git ls-remote --tags --refs "${PW_REPO}" "${PW_VERSION}" | grep -q .; then
+            echo "Cloning tag ${PW_VERSION}"
+            git clone --depth 1 --branch "${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
+          elif git ls-remote --tags --refs "${PW_REPO}" "v${PW_VERSION}" | grep -q .; then
+            echo "Cloning tag v${PW_VERSION}"
+            git clone --depth 1 --branch "v${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
+          else
+            echo "Tags not found; falling back to shallow clone of default branch"
+            git clone --depth 1 "${PW_REPO}" "${PW_DIR}"
+          fi
+
+          cd "${PW_DIR}"
           meson setup build -Ddefault_library=shared -Ddocumentation=false -Dsystemd=true -Dman=false
           meson compile -C build -v
           sudo meson install -C build
