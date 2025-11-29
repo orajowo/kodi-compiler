@@ -23,7 +23,8 @@ jobs:
           fetch-depth: 1
 
       - name: Clone xbmc/xbmc (shallow)
-        run: git clone --depth 1 https://github.com/xbmc/xbmc.git xbmc
+        run: |
+          git clone --depth 1 https://github.com/xbmc/xbmc.git xbmc
 
       - name: Install build & packaging dependencies
         run: |
@@ -38,7 +39,7 @@ jobs:
             libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
             libva-dev libva-drm2 libva-x11-2 vainfo \
-            libvdpau-dev libva-dev libva-glx2 \
+            libvdpau-dev libva-glx2 \
             dpkg-dev fakeroot zip ccache || true
 
       - name: Build PipeWire >= 0.3.50 (optional, ensures modern PW)
@@ -86,7 +87,7 @@ jobs:
             -DENABLE_ADDONS=ON \
             -DENABLE_TESTS=OFF
 
-          ninja -j $(nproc)
+          ninja -j "$(nproc)"
 
           # Correctly install into a staging dir using DESTDIR
           STAGING_DIR="${{ github.workspace }}/staging"
@@ -99,7 +100,7 @@ jobs:
           STAGING_DIR="${{ github.workspace }}/staging"
           PKG_DIR="${{ github.workspace }}/kodi-deb"
 
-          rm -rf "$PKG_DIR"
+          rm -rf "${PKG_DIR}"
           mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
           cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
 
@@ -108,7 +109,7 @@ jobs:
           ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
           mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
 
-          cat > "${DESKTOP_DIR}/kodi.desktop" <<'EOF'
+          cat > "${DESKTOP_DIR}/kodi.desktop" <<'DESKTOP_EOF'
 [Desktop Entry]
 Name=Kodi
 GenericName=Media Center
@@ -120,7 +121,7 @@ Categories=AudioVideo;Player;Video;
 MimeType=video/*;audio/*;
 Icon=kodi
 StartupNotify=true
-EOF
+DESKTOP_EOF
 
           # Try to install an icon if present in built tree (common path)
           if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
@@ -134,7 +135,7 @@ EOF
                 -e "s|%ARCH%|amd64|g" \
                 packaging/control.template > "${PKG_DIR}/DEBIAN/control"
           else
-            cat > "${PKG_DIR}/DEBIAN/control" <<'EOF'
+            cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
 Package: kodi
 Version: $(date +%Y%m%d)-${GITHUB_SHA::7}
 Section: video
@@ -142,14 +143,14 @@ Priority: optional
 Architecture: amd64
 Maintainer: Kodi Packager <noreply@example.com>
 Description: Kodi Media Center (custom build)
-EOF
+CONTROL_EOF
           fi
 
           # If packaging scripts exist in repo, copy them; otherwise create a minimal postinst
           if [ -f packaging/postinst ]; then
             install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
           else
-            cat > "${PKG_DIR}/DEBIAN/postinst" <<'EOF'
+            cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
 #!/bin/sh
 set -e
 # update desktop database and icon cache
@@ -160,7 +161,7 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 fi
 exit 0
-EOF
+POSTINST_EOF
             chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
           fi
 
