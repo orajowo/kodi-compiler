@@ -50,9 +50,9 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-
+    
           sudo apt-get update
-
+    
           PKGS=(
             build-essential cmake ninja-build pkg-config git python3 python3-pip
             autoconf automake libtool gettext curl ca-certificates
@@ -90,28 +90,34 @@ jobs:
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
           )
-
+    
           echo "Installing ${#PKGS[@]} packages..."
           sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
-
+    
           # Clean apt lists to reduce disk usage on CI
           sudo rm -rf /var/lib/apt/lists/*
-
-      # NOTE: PipeWire build step removed — not required for Kodi X11 on Elementary OS.
-      # If you want PipeWire in future, re-add a dedicated PipeWire build step.
-
+          sudo apt-get clean
+    
       - name: Install Meson & Ninja (needed by FindDav1d / dav1d probe)
         run: |
           set -euo pipefail
-          # Ensure pip is available (you already install python3-pip in dependencies,
-          # but keep this defensive)
+    
+          # Use pip to install meson and ninja into the user's local bin
           python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
+    
+          # Make ~/.local/bin available to subsequent steps in GitHub Actions
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+    
+          # Also export it for the remainder of this run (this shell only)
           export PATH="$HOME/.local/bin:$PATH"
+    
           echo "PATH=$PATH"
-          echo "meson: $(command -v meson || echo 'not-found')"
+          echo "meson path: $(command -v meson || echo 'not-found')"
+          echo "ninja path: $(command -v ninja || echo 'not-found')"
+    
+          # Show versions (don't fail the run just because version check prints)
           meson --version || true
           ninja --version || true
-
 
       - name: Configure, build and install Kodi into staging
         env:
