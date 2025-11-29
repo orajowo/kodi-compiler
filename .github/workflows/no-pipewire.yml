@@ -226,8 +226,16 @@ jobs:
           StartupNotify=true
           DESKTOP_EOF
 
-          if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
-            install -D -m 0644 "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" "${ICON_DIR}/kodi.png"
+          # safe copy: only install icon if source exists and destination is missing or different
+          SRC="${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png"
+          DST="${ICON_DIR}/kodi.png"
+          if [ -f "${SRC}" ]; then
+            mkdir -p "$(dirname "${DST}")"
+            if [ ! -e "${DST}" ] || ! cmp -s "${SRC}" "${DST}"; then
+              install -D -m 0644 "${SRC}" "${DST}"
+            else
+              echo "Icon already present and identical — skipping install."
+            fi
           fi
 
           mkdir -p "${PKG_DIR}/DEBIAN"
