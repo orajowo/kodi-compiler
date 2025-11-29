@@ -249,20 +249,20 @@ jobs:
             -DENABLE_INTERNAL_FLATBUFFERS=ON
             -DENABLE_INTERNAL_FMT=ON
             -DENABLE_INTERNAL_CROSSGUID=ON
-            -DENABLE_INTERNAL_TEXTPACKER=ON
-            -DENABLE_INTERNAL_JSONSCHEMAS=ON
+            # -DENABLE_INTERNAL_TEXTPACKER=ON        # <-- UNUSED (warning)
+            # -DENABLE_INTERNAL_JSONSCHEMAS=ON       # <-- UNUSED (warning)
           
             # Helper/optional internals
             -DENABLE_INTERNAL_TINYXML2=ON
-            -DENABLE_INTERNAL_TINYXML=ON
-            -DENABLE_INTERNAL_UDFREAD=ON
+            # -DENABLE_INTERNAL_TINYXML=ON           # <-- UNUSED (warning)
+            # -DENABLE_INTERNAL_UDFREAD=ON           # <-- UNUSED (warning)
             -DENABLE_INTERNAL_SPDLOG=ON
-            -DENABLE_INTERNAL_MICROHTTPD=ON
+            # -DENABLE_INTERNAL_MICROHTTPD=ON        # <-- UNUSED (warning)
             -DENABLE_INTERNAL_NFS=ON
-            -DENABLE_INTERNAL_LIBOGG=ON
-            -DENABLE_INTERNAL_LIBVORBIS=ON
-            -DENABLE_INTERNAL_LIBJPEG=ON
-            -DENABLE_INTERNAL_LIBPNG=ON
+            # -DENABLE_INTERNAL_LIBOGG=ON            # <-- UNUSED (warning)
+            # -DENABLE_INTERNAL_LIBVORBIS=ON         # <-- UNUSED (warning)
+            # -DENABLE_INTERNAL_LIBJPEG=ON           # <-- UNUSED (warning)
+            # -DENABLE_INTERNAL_LIBPNG=ON            # <-- UNUSED (warning)
             -DENABLE_INTERNAL_PCRE2=ON
             -DENABLE_INTERNAL_NLOHMANNJSON=ON
             -DENABLE_INTERNAL_FSTRCMP=ON
@@ -270,8 +270,9 @@ jobs:
             -DENABLE_INTERNAL_CURL=ON
             -DENABLE_INTERNAL_TAGLIB=ON
           
-            # Testing/tools
+            # Testing/tools (harus ON untuk memperbaiki error "gtest target does not exist")
             -DENABLE_INTERNAL_GTEST=ON
+            -DBUILD_TESTING=ON
           
             # Platform/features
             -DENABLE_ALSA=ON
@@ -282,12 +283,13 @@ jobs:
             -DENABLE_AVAHI=ON
             -DENABLE_PIPEWIRE=ON
             -DENABLE_V4L=ON
-            -DENABLE_ADDONS=ON
-            -DENABLE_TESTS=OFF
+            # -DENABLE_ADDONS=ON                      # <-- UNUSED (warning)
+            # -DENABLE_TESTS=ON                       # <-- UNUSED (warning, Kodi uses BUILD_TESTING instead)
           )
-          
+
           # Run cmake with the flags (array expansion preserves each -D as separate arg)
           cmake -S ../xbmc -B . -G Ninja "${CMFLAGS[@]}"
+
 
           # parallel build with verbose output; on failure show last lines + run single-job
           echo "Starting parallel build..."
