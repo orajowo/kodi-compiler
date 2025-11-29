@@ -42,9 +42,10 @@ jobs:
             libvdpau-dev libva-glx2 \
             dpkg-dev fakeroot zip ccache || true
 
-      - name: Build PipeWire 1.5.84 (robust)
+      - name: Build PipeWire 1.5.84 (robust, fixed meson options)
         run: |
           set -euo pipefail
+
           python3 -m pip install --user "meson>=1.1.0" ninja
           export PATH="$HOME/.local/bin:$PATH"
 
@@ -53,7 +54,6 @@ jobs:
           PW_DIR="${RUNNER_TEMP:-/tmp}/pipewire-src"
           rm -rf "${PW_DIR}"
 
-          # Prefer exact tag without 'v' (per your link), then try with 'v' prefix, else fallback
           if git ls-remote --tags --refs "${PW_REPO}" "${PW_VERSION}" | grep -q .; then
             echo "Cloning tag ${PW_VERSION}"
             git clone --depth 1 --branch "${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
@@ -66,7 +66,11 @@ jobs:
           fi
 
           cd "${PW_DIR}"
-          meson setup build -Ddefault_library=shared -Ddocumentation=false -Dsystemd=true -Dman=false
+
+          # Use a minimal set of meson options — remove options that may not exist
+          meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || \
+            meson setup build -Ddefault_library=shared
+
           meson compile -C build -v
           sudo meson install -C build
 
