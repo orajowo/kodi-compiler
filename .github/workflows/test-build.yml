@@ -110,7 +110,15 @@ jobs:
           cd "${PW_DIR}"
           rm -rf build meson-private || true
 
-          meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || meson setup build -Ddefault_library=shared
+          meson setup build \
+            -Ddefault_library=shared \
+            -Dpipewire-alsa=true \
+            -Dalsa=enabled \
+            -Dbluez5=true \
+            -Dlibcamera=disabled \
+            -Dvideoconvert=enabled \
+            -Dv4l2=enabled \
+            -Dudev=enabled
           meson compile -C build -v
           sudo "${HOME}/.local/bin/meson" install -C build
 
