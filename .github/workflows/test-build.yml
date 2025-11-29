@@ -42,7 +42,7 @@ jobs:
             libvdpau-dev libva-glx2 \
             dpkg-dev fakeroot zip ccache || true
 
-      - name: Build PipeWire >= 0.3.50 (optional, ensures modern PW)
+      - name: Build PipeWire >=  0.3.50 (optional, ensures modern PW)
         run: |
           set -e
           python3 -m pip install --user "meson>=1.1.0" ninja
