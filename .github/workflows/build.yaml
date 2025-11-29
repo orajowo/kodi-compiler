@@ -282,9 +282,9 @@ jobs:
             -DENABLE_VDPAU=OFF
             -DENABLE_AVAHI=ON
             -DENABLE_PIPEWIRE=ON
-            -DENABLE_V4L=ON
-            -DENABLE_ADDONS=ON
-            -DENABLE_TESTS=OFF
+            # -DENABLE_V4L=ON
+            # -DENABLE_ADDONS=ON
+            # -DENABLE_TESTS=OFF
           )
 
           # create helper to provide imported gtest targets if system lib exists
