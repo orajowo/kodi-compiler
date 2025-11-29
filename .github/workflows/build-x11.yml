@@ -83,7 +83,7 @@ jobs:
             libva-dev libva-drm2 libva-x11-2 vainfo
             # Audio / multimedia libs
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
-            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev libcap-dev libcec-dev lirc liblircclient-dev libflatbuffers-dev
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev libcap-dev libcec-dev lirc libflatbuffers-dev
             # FFmpeg / libav
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
             libavfilter-dev libavdevice-dev libswresample-dev
