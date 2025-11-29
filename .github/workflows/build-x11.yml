@@ -226,103 +226,29 @@ jobs:
             exit 1
           fi
 
-          # install into staging dir using DESTDIR
+                    # install into staging dir using DESTDIR
           STAGING_DIR="${GITHUB_WORKSPACE}/staging"
           mkdir -p "${STAGING_DIR}"
           DESTDIR="${STAGING_DIR}" ninja install
 
           echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
 
-      - name: Prepare Debian package contents (desktop entry + scripts)
+      - name: Generate packaging/control.template from staging (auto-detect)
         run: |
-          set -e
-          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
-          PKG_DIR="${GITHUB_WORKSPACE}/kodi-deb"
-          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+          set -euo pipefail
+          # ensure script is executable
+          chmod +x packaging/generate-control-from-staging.sh
+          # generate control.template from the staging tree; pass manual extras if needed
+          packaging/generate-control-from-staging.sh "${GITHUB_WORKSPACE}/staging" "${KODI_INSTALL_PREFIX}" "$(cat ${GITHUB_WORKSPACE}/build_version.txt)" "libbluray2,libsmbclient"
+        # Note: dpkg-dev is included in the PKGS install above; if you removed it, re-add install step here.
 
-          rm -rf "${PKG_DIR}"
-          mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
-          cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
-
-          DESKTOP_DIR="${PKG_DIR}/usr/share/applications"
-          ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
-          mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
-
-          cat > "${DESKTOP_DIR}/kodi.desktop" <<'DESKTOP_EOF'
-          [Desktop Entry]
-          Name=Kodi
-          GenericName=Media Center
-          Comment=Play media and manage library
-          Exec=/usr/bin/kodi %U
-          Terminal=false
-          Type=Application
-          Categories=AudioVideo;Player;Video;
-          MimeType=video/*;audio/*;
-          Icon=kodi
-          StartupNotify=true
-          DESKTOP_EOF
-
-          # safe copy: only install icon if source exists and destination is missing or different
-          SRC="${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png"
-          DST="${ICON_DIR}/kodi.png"
-          if [ -f "${SRC}" ]; then
-            mkdir -p "$(dirname "${DST}")"
-            if [ ! -e "${DST}" ] || ! cmp -s "${SRC}" "${DST}"; then
-              install -D -m 0644 "${SRC}" "${DST}"
-            else
-              echo "Icon already present and identical — skipping install."
-            fi
-          fi
-
-          mkdir -p "${PKG_DIR}/DEBIAN"
-          if [ -f packaging/control.template ]; then
-            sed -e "s|%VERSION%|${VERSION}|g" \
-                -e "s|%ARCH%|amd64|g" \
-                packaging/control.template > "${PKG_DIR}/DEBIAN/control"
-          else
-            cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
-            Package: kodi
-            Version: PLACEHOLDER_VERSION
-            Section: video
-            Priority: optional
-            Architecture: amd64
-            Maintainer: Kodi Packager <noreply@example.com>
-            Description: Kodi Media Center (custom build)
-            CONTROL_EOF
-            sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
-          fi
-
-          if [ -f packaging/postinst ]; then
-            install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
-          else
-            cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
-            #!/bin/sh
-            set -e
-            if command -v update-desktop-database >/dev/null 2>&1; then
-              update-desktop-database -q
-            fi
-            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
-            fi
-            exit 0
-            POSTINST_EOF
-            chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
-          fi
-
-          if [ -f packaging/prerm ]; then
-            install -m 0755 packaging/prerm "${PKG_DIR}/DEBIAN/prerm"
-          fi
-
-          chmod -R 0755 "${PKG_DIR}/DEBIAN"
-
-      - name: Build .deb package
+      - name: Run packaging script to build .deb
         run: |
-          set -e
-          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          set -euo pipefail
           mkdir -p out
-          PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
-          dpkg-deb --build "${GITHUB_WORKSPACE}/kodi-deb" "out/${PKG_NAME}"
-          ls -lh out
+          chmod +x packaging/build-deb.sh
+          # usage: packaging/build-deb.sh <staging-dir> <install-prefix> <out-dir> <version>
+          packaging/build-deb.sh "${GITHUB_WORKSPACE}/staging" "${KODI_INSTALL_PREFIX}" "${GITHUB_WORKSPACE}/out" "$(cat ${GITHUB_WORKSPACE}/build_version.txt)"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -337,3 +263,4 @@ jobs:
           tag: build-${{ github.run_id }}-${{ matrix.os }}
           name: kodi-deb-${{ matrix.os }}-${{ github.run_id }}
           body: "Automated Kodi .deb build for ${matrix.os} (Intel / X11)."
+
