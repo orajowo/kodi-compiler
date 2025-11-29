@@ -1,4 +1,4 @@
-name: Build for Elementary OS (Intel / X11)
+name: Build f x11(Intel / X11)
 
 on:
   push:
