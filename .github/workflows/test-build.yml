@@ -38,39 +38,55 @@ jobs:
       - name: Install build & packaging dependencies (full)
         run: |
           set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
           sudo apt-get update
 
           sudo apt-get install -y --no-install-recommends \
+            # build basics
             build-essential cmake ninja-build pkg-config git python3 python3-pip \
             autoconf automake libtool gettext curl ca-certificates \
             python3-setuptools python3-wheel python3-venv \
+            # X / GL / Wayland / rendering
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev \
             libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
             libvulkan-dev libvulkan1 vulkan-utils \
+            # audio basics
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev \
+            # ffmpeg / libav
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
             libavfilter-dev libavdevice-dev libavresample-dev \
+            # gstreamer
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-plugins-ugly gstreamer1.0-libav \
             gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev \
+            # codecs / DSP / audio extras
             libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev \
             libwebrtc-audio-processing-dev libsbc-dev libcanberra-dev \
-            libreadline-dev libopenal-dev \
+            libopenal-dev \
+            # JACK / realtime
             libjack-jackd2-dev libsamplerate0-dev libsoxr-dev \
+            # pipewire extras & system integration
             libsystemd-dev libselinux-dev \
             libavahi-client-dev libusb-1.0-0-dev \
+            # bluetooth / discovery
             libbluetooth-dev \
+            # video capture / camera
             libcamera-dev libv4l-dev v4l-utils \
+            # apparmor / snap support
             libapparmor-dev libsnapd-glib-dev \
+            # special / optional hardware support
             libffado-dev libasound2-plugins \
+            # documentation / introspection
             doxygen python3-sphinx python3-lxml \
+            # packaging/tooling
             dpkg-dev fakeroot zip ccache \
-            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
-            || { echo "apt-get install failed"; exit 1; }
+            # misc helpful libs
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
 
-          # Clean apt lists to reduce disk usage (important on CI)
+          # Clean apt lists to reduce disk usage on CI
           sudo rm -rf /var/lib/apt/lists/*
 
       - name: Build PipeWire 1.5.84 (robust, use meson CLI)
