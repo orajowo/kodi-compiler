@@ -71,6 +71,10 @@ jobs:
             libbluetooth-dev
             # camera/v4l (Kodi can use V4L for capture)
             libv4l-dev v4l-utils
+            # subtitles / ASS support (required)
+            libass-dev
+            # optional but useful for video playback/bluray & fonts
+            libfontconfig1-dev libbluray-dev
             # packaging / docs / tooling
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
@@ -114,6 +118,7 @@ jobs:
             -DENABLE_XRANDR=ON \
             -DENABLE_VAAPI=ON \
             -DENABLE_VDPAU=OFF \
+            -DENABLE_AVAHI=ON \
             -DENABLE_PIPEWIRE=OFF \
             -DENABLE_V4L=ON \
             -DENABLE_ADDONS=ON \
