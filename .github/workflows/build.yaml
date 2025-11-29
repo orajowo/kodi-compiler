@@ -96,52 +96,70 @@ jobs:
           fi
 
           PKGS=(
-            # core build tools
+            # Core build tools
             build-essential cmake ninja-build pkg-config git python3 python3-pip
-            autoconf automake libtool libtool-bin gettext curl ca-certificates
             python3-setuptools python3-wheel python3-venv
+            autoconf automake autopoint autotools-dev libtool libtool-bin gettext
+            curl ca-certificates gawk g++ gcc cpp
+            meson nasm swig unzip uuid-dev zlib1g-dev python3-dev python3-pil python3-minimal
+            flatbuffers gperf rustc cargo default-jre
+          
             # X / GL / Wayland / rendering
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
-            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev
-            # Video acceleration (VAAPI)
-            libva-dev libva-drm2 libva-x11-2 vainfo
+            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libglu1-mesa-dev
+            libglew-dev libxkbcommon-dev wayland-protocols
+          
+            # Video acceleration
+            libva-dev libva-drm2 libva-x11-2 vainfo libvdpau-dev
+          
             # Audio / multimedia libs
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
             libcap-dev libcec-dev lirc liblirc-dev libflatbuffers-dev
-            # FFmpeg / libav
+          
+            # FFmpeg
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
             libavfilter-dev libavdevice-dev libswresample-dev
-            # GStreamer (optional)
+          
+            # GStreamer
             libunwind-dev libdw-dev
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
             gstreamer1.0-plugins-ugly gstreamer1.0-libav
             gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev
-            # useful codecs / audio
-            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev
-            libsbc-dev libcanberra-dev libreadline-dev libopenal-dev
-            libjack-jackd2-dev libsamplerate0-dev libsoxr-dev
-            # system integration & discovery
-            libsystemd-dev libavahi-client-dev libusb-1.0-0-dev
-            libbluetooth-dev
-            # camera/v4l (capture)
+          
+            # Codecs / audio
+            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev libsbc-dev
+            libcanberra-dev libreadline-dev libopenal-dev libjack-jackd2-dev
+            libsamplerate0-dev libsoxr-dev
+          
+            # System integration
+            libsystemd-dev libavahi-client-dev libavahi-common-dev libavahi-compat-libdnssd-dev
+            libusb-1.0-0-dev libbluetooth-dev libpipewire-0.3-dev libsndio-dev
+          
+            # Camera
             libv4l-dev v4l-utils
-            # subtitles / ASS support (required)
+          
+            # Subtitle engine
             libass-dev
-            # optional but useful for video playback/bluray & fonts
-            libfontconfig1-dev libbluray-dev libcdio++-dev liblzo2-dev nlohmann-json3-dev libtinyxml-dev libtinyxml2-dev libbrotli-dev libgif-dev
-            # packaging / docs / tooling
+          
+            # Video / Bluray / misc formats
+            libfontconfig1-dev libfontconfig-dev
+            libbluray-dev libcdio++-dev libcdio-dev
+            libiso9660-dev liblzo2-dev libgif-dev libbrotli-dev
+          
+            # XML/JSON
+            libtinyxml-dev libtinyxml2-dev nlohmann-json3-dev
+          
+            # Packaging / docs / tooling
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
-            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
-            libspdlog-dev
-            # extras (from your previous list)
-            libexiv2-dev libfstrcmp-dev libiso9660-dev libtag1-dev
-            # mariadb, pipewire etc.
-            libavahi-compat-libdnssd-dev libpipewire-0.3-dev libsndio-dev
-            libvdpau-dev libmariadb-dev-compat libmariadb-dev
-            # tools sometimes required
-            meson nasm swig unzip uuid-dev zip zlib1g-dev python3-dev python3-pil
+            libglib2.0-dev libc6-dev libfmt-dev libspdlog-dev libboost-all-dev
+          
+            # Extra libs
+            libexiv2-dev libfstrcmp-dev libtag1-dev libp8-platform-dev libcrossguid-dev
+            libflac-dev libjpeg-dev libpng-dev libtiff-dev liblcms2-dev libmicrohttpd-dev
+            libogg-dev libvorbis-dev libunistring-dev libplist-dev libshairplay-dev
+            libsqlite3-dev libmysqlclient-dev libgtest-dev
           )
 
           # Append any extra packages that were found to be available
@@ -154,26 +172,7 @@ jobs:
 
           echo "Installing ${#PKGS[@]} packages..."
           sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
-          sudo apt install -y \
-            autoconf automake autopoint gettext autotools-dev cmake curl \
-            default-jre gawk g++ gcc cpp pkg-config flatbuffers gdc gperf \
-            libasound2-dev libass-dev libavahi-client-dev libavahi-common-dev \
-            libbluetooth-dev libbluray-dev libbz2-dev libcdio-dev libcec-dev \
-            libp8-platform-dev libcrossguid-dev libcurl4-openssl-dev libcwiid-dev \
-            libdbus-1-dev libegl1-mesa-dev libenca-dev libexiv2-dev libflac-dev \
-            libfontconfig-dev libfmt-dev libfreetype6-dev libfribidi-dev \
-            libgcrypt-dev libgif-dev libgl1-mesa-dev libglew-dev libglu1-mesa-dev \
-            libgnutls28-dev libgpg-error-dev libgtest-dev libiso9660-dev libjpeg-dev \
-            liblcms2-dev liblirc-dev libltdl-dev liblzo2-dev libmicrohttpd-dev \
-            libmysqlclient-dev libnfs-dev libogg-dev libpcre2-dev libplist-dev \
-            libpng-dev libpulse-dev libshairplay-dev libsmbclient-dev libspdlog-dev \
-            libsqlite3-dev libssl-dev libtag1-dev libtiff-dev libtinyxml2-dev libtool \
-            libudev-dev libunistring-dev libva-dev libvdpau-dev libvorbis-dev \
-            libxkbcommon-dev libxmu-dev libxrandr-dev libxslt1-dev libxt-dev \
-            wayland-protocols lsb-release meson nasm ninja-build python3-dev \
-            python3-pil python3-minimal swig unzip uuid-dev zip zlib1g-dev \
-            nlohmann-json3-dev rustc cargo
-
+          
           # Clean apt lists to reduce disk usage on CI
           sudo rm -rf /var/lib/apt/lists/*
           sudo apt-get clean
