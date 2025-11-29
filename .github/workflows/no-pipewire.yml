@@ -1,0 +1,225 @@
+name: Build Kodi .deb for Elementary OS (Intel / X11)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: Build Kodi and create .deb (Elementary OS 8 / Intel / X11)
+    runs-on: ubuntu-24.04
+
+    env:
+      REPO: xbmc/xbmc
+      KODI_BRANCH: 22.0a2-Piers
+      KODI_INSTALL_PREFIX: /usr
+      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
+      LD_LIBRARY_PATH: /usr/local/lib:/usr/local/lib/x86_64-linux-gnu
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone xbmc/xbmc (shallow, branch fallback)
+        run: |
+          set -euo pipefail
+          echo "Cloning ${REPO} branch ${KODI_BRANCH} (shallow)"
+          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+          else
+            echo "Branch ${KODI_BRANCH} not found, cloning default branch shallow"
+            git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+          fi
+
+      - name: Install build & packaging dependencies (robust)
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          sudo apt-get update
+
+          PKGS=(
+            build-essential cmake ninja-build pkg-config git python3 python3-pip
+            autoconf automake libtool gettext curl ca-certificates
+            python3-setuptools python3-wheel python3-venv
+            # X / GL / Wayland / rendering (kept for general multimedia support)
+            libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
+            libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev
+            # Video acceleration (VAAPI)
+            libva-dev libva-drm2 libva-x11-2 vainfo
+            # Audio / multimedia libs
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
+            # FFmpeg / libav
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+            libavfilter-dev libavdevice-dev libswresample-dev
+            # GStreamer (optional for Kodi)
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+            gstreamer1.0-plugins-ugly gstreamer1.0-libav
+            gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev
+            # useful codecs / audio
+            libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev
+            libsbc-dev libcanberra-dev libreadline-dev libopenal-dev
+            libjack-jackd2-dev libsamplerate0-dev libsoxr-dev
+            # system integration & discovery
+            libsystemd-dev libavahi-client-dev libusb-1.0-0-dev
+            libbluetooth-dev
+            # camera/v4l (Kodi can use V4L for capture)
+            libv4l-dev v4l-utils
+            # packaging / docs / tooling
+            dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
+          )
+
+          echo "Installing ${#PKGS[@]} packages..."
+          sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+
+          # Clean apt lists to reduce disk usage on CI
+          sudo rm -rf /var/lib/apt/lists/*
+
+      # NOTE: PipeWire build step removed — not required for Kodi X11 on Elementary OS.
+      # If you want PipeWire in future, re-add a dedicated PipeWire build step.
+
+      - name: Configure, build and install Kodi into staging
+        env:
+          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
+          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
+          VERSION="$(date +%Y%m%d)-${SHORT_SHA}"
+          echo "Building version: ${VERSION}"
+
+          mkdir -p build
+          cd build
+
+          cmake -S ../xbmc -B . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
+            -DCORE_PLATFORM_NAME=x11 \
+            -DAPP_RENDER_SYSTEM=gl \
+            -DENABLE_INTERNAL_FFMPEG=ON \
+            -DENABLE_INTERNAL_DAV1D=ON \
+            -DENABLE_INTERNAL_FLATBUFFERS=ON \
+            -DENABLE_INTERNAL_FMT=ON \
+            -DENABLE_INTERNAL_CROSSGUID=ON \
+            -DENABLE_ALSA=ON \
+            -DENABLE_PULSEAUDIO=ON \
+            -DENABLE_XRANDR=ON \
+            -DENABLE_VAAPI=ON \
+            -DENABLE_VDPAU=OFF \
+            -DENABLE_PIPEWIRE=OFF \
+            -DENABLE_V4L=ON \
+            -DENABLE_ADDONS=ON \
+            -DENABLE_TESTS=OFF
+
+          ninja -j "$(nproc)"
+
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+          mkdir -p "${STAGING_DIR}"
+          DESTDIR="${STAGING_DIR}" ninja install
+
+          echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
+
+      - name: Prepare Debian package contents (desktop entry + scripts)
+        run: |
+          set -e
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          PKG_DIR="${GITHUB_WORKSPACE}/kodi-deb"
+          STAGING_DIR="${GITHUB_WORKSPACE}/staging"
+
+          rm -rf "${PKG_DIR}"
+          mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
+          cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
+
+          DESKTOP_DIR="${PKG_DIR}/usr/share/applications"
+          ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
+
+          cat > "${DESKTOP_DIR}/kodi.desktop" <<'DESKTOP_EOF'
+          [Desktop Entry]
+          Name=Kodi
+          GenericName=Media Center
+          Comment=Play media and manage library
+          Exec=/usr/bin/kodi %U
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Player;Video;
+          MimeType=video/*;audio/*;
+          Icon=kodi
+          StartupNotify=true
+          DESKTOP_EOF
+
+          if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
+            install -D -m 0644 "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" "${ICON_DIR}/kodi.png"
+          fi
+
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          if [ -f packaging/control.template ]; then
+            sed -e "s|%VERSION%|${VERSION}|g" \
+                -e "s|%ARCH%|amd64|g" \
+                packaging/control.template > "${PKG_DIR}/DEBIAN/control"
+          else
+            cat > "${PKG_DIR}/DEBIAN/control" <<'CONTROL_EOF'
+            Package: kodi
+            Version: PLACEHOLDER_VERSION
+            Section: video
+            Priority: optional
+            Architecture: amd64
+            Maintainer: Kodi Packager <noreply@example.com>
+            Description: Kodi Media Center (custom build)
+            CONTROL_EOF
+            sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
+          fi
+
+          if [ -f packaging/postinst ]; then
+            install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
+          else
+            cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST_EOF'
+            #!/bin/sh
+            set -e
+            if command -v update-desktop-database >/dev/null 2>&1; then
+              update-desktop-database -q
+            fi
+            if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+              gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+            fi
+            exit 0
+            POSTINST_EOF
+            chmod 0755 "${PKG_DIR}/DEBIAN/postinst"
+          fi
+
+          if [ -f packaging/prerm ]; then
+            install -m 0755 packaging/prerm "${PKG_DIR}/DEBIAN/prerm"
+          fi
+
+          chmod -R 0755 "${PKG_DIR}/DEBIAN"
+
+      - name: Build .deb package
+        run: |
+          set -e
+          VERSION="$(cat "${GITHUB_WORKSPACE}/build_version.txt" || echo "unknown")"
+          mkdir -p out
+          PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
+          dpkg-deb --build "${GITHUB_WORKSPACE}/kodi-deb" "out/${PKG_NAME}"
+          ls -lh out
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-deb-elementary
+          path: out/*.deb
+
+      - name: Create GitHub Release and upload .deb
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: out/*.deb
+          tag: build-${{ github.run_id }}
+          name: kodi-deb-elementary-${{ github.run_id }}
+          body: "Automated Kodi .deb build for Elementary OS 8 (Intel / X11)."
