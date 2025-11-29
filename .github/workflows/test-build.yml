@@ -48,11 +48,11 @@ jobs:
             python3-setuptools python3-wheel python3-venv
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev
             libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev
-            libvulkan-dev libvulkan1 vulkan-utils
+            libvulkan-dev libvulkan1 vulkan-tools
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
-            libavfilter-dev libavdevice-dev libavresample-dev
+            libavfilter-dev libavdevice-dev libswresample-dev
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
             gstreamer1.0-plugins-ugly gstreamer1.0-libav
