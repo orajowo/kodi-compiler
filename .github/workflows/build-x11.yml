@@ -182,39 +182,40 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
-
-          echo "Installing libgtest-dev (sources) and cmake build tools..."
+      
+          echo "Installing libgtest-dev (sources) and build tools..."
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgtest-dev cmake build-essential
-
-          # Debian / Ubuntu put googletest sources in /usr/src/googletest
+      
           if [ -d /usr/src/googletest ]; then
-            echo "Building googletest from /usr/src/googletest..."
-            pushd /usr/src/googletest
-            cmake -S . -B build -Dgtest_build_tests=OFF
-            cmake --build build -- -j "$(nproc)"
-            sudo cmake --install build --prefix=/usr || true
-            popd
+            echo "Building googletest from /usr/src/googletest using a writable build dir..."
+            BUILD_DIR="$(mktemp -d /tmp/gtest-build-XXXX)"
+            cmake -S /usr/src/googletest -B "${BUILD_DIR}" -Dgtest_build_tests=OFF
+            cmake --build "${BUILD_DIR}" -- -j "$(nproc)"
+            sudo cmake --install "${BUILD_DIR}" --prefix=/usr || true
+            echo "Cleaning up ${BUILD_DIR}"
+            rm -rf "${BUILD_DIR}"
           else
-            echo "/usr/src/googletest not found — attempting fallback: download release and build"
+            echo "/usr/src/googletest not found — fallback to download & build"
             TMPG=$(mktemp -d)
             pushd "${TMPG}"
-            # fallback to capture recent release (network on runners should allow)
-            wget -q https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz -O gtest.tar.gz || true
-            tar xf gtest.tar.gz || true
+            wget -q https://github.com/google/googletest/archive/refs/tags/release-1.14.0.tar.gz -O gtest.tar.gz
+            tar xf gtest.tar.gz
             cd googletest-release-*
             cmake -S . -B build -Dgtest_build_tests=OFF
             cmake --build build -- -j "$(nproc)"
             sudo cmake --install build --prefix=/usr || true
             popd
+            rm -rf "${TMPG}"
           fi
-
+      
           echo "Verifying installed gtest artifacts..."
           ls -l /usr/include/gtest* /usr/include/gtest || true
           ldconfig -p | grep gtest || true
           ls -l /usr/lib/*gtest* /usr/lib/x86_64-linux-gnu/*gtest* || true
-
+      
           echo "Done building/installing Google Test."
+
 
 
       - name: Configure, build and install Kodi into staging
