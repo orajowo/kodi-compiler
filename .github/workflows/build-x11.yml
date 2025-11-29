@@ -83,7 +83,7 @@ jobs:
             libva-dev libva-drm2 libva-x11-2 vainfo
             # Audio / multimedia libs
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
-            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev
+            libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev libcap-dev libcec-dev lirc liblircclient-dev libflatbuffers-dev
             # FFmpeg / libav
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
             libavfilter-dev libavdevice-dev libswresample-dev
@@ -105,7 +105,7 @@ jobs:
             # subtitles / ASS support (required)
             libass-dev
             # optional but useful for video playback/bluray & fonts
-            libfontconfig1-dev libbluray-dev
+            libfontconfig1-dev libbluray-dev libfontconfig1-dev libbluray-dev libcdio++-dev
             # packaging / docs / tooling
             dpkg-dev fakeroot zip ccache doxygen python3-sphinx python3-lxml
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
