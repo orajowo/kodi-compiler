@@ -178,6 +178,45 @@ jobs:
           echo "ninja: $(command -v ninja || echo 'not-found')"
           ninja --version || true
 
+      - name: Build and install libgtest (Google Test) for CI
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          echo "Installing libgtest-dev (sources) and cmake build tools..."
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtest-dev cmake build-essential
+
+          # Debian / Ubuntu put googletest sources in /usr/src/googletest
+          if [ -d /usr/src/googletest ]; then
+            echo "Building googletest from /usr/src/googletest..."
+            pushd /usr/src/googletest
+            cmake -S . -B build -Dgtest_build_tests=OFF
+            cmake --build build -- -j "$(nproc)"
+            sudo cmake --install build --prefix=/usr || true
+            popd
+          else
+            echo "/usr/src/googletest not found — attempting fallback: download release and build"
+            TMPG=$(mktemp -d)
+            pushd "${TMPG}"
+            # fallback to capture recent release (network on runners should allow)
+            wget -q https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz -O gtest.tar.gz || true
+            tar xf gtest.tar.gz || true
+            cd googletest-release-*
+            cmake -S . -B build -Dgtest_build_tests=OFF
+            cmake --build build -- -j "$(nproc)"
+            sudo cmake --install build --prefix=/usr || true
+            popd
+          fi
+
+          echo "Verifying installed gtest artifacts..."
+          ls -l /usr/include/gtest* /usr/include/gtest || true
+          ldconfig -p | grep gtest || true
+          ls -l /usr/lib/*gtest* /usr/lib/x86_64-linux-gnu/*gtest* || true
+
+          echo "Done building/installing Google Test."
+
+
       - name: Configure, build and install Kodi into staging
         env:
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
@@ -230,10 +269,10 @@ jobs:
             -DENABLE_INTERNAL_EXIV2=ON \
             -DENABLE_INTERNAL_CURL=ON \
             -DENABLE_INTERNAL_TAGLIB=ON \
-            #\
+            \
             # Testing/tools: (OFF di CI release build kecuali kamu butuh unit tests)
-            #-DENABLE_INTERNAL_GTEST=ON \
-            #\
+            -DENABLE_INTERNAL_GTEST=ON \
+            \
             # Platform/features (sesuaikan sesuai kebutuhan)
             -DENABLE_ALSA=ON \
             -DENABLE_PULSEAUDIO=ON \
