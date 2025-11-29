@@ -272,7 +272,7 @@ jobs:
           
             # Testing/tools (harus ON untuk memperbaiki error "gtest target does not exist")
             -DENABLE_INTERNAL_GTEST=ON
-            -DBUILD_TESTING=ON
+            # -DBUILD_TESTING=ON                     # <-- UNUSED (warning)
           
             # Platform/features
             -DENABLE_ALSA=ON
@@ -282,13 +282,38 @@ jobs:
             -DENABLE_VDPAU=OFF
             -DENABLE_AVAHI=ON
             -DENABLE_PIPEWIRE=ON
-            -DENABLE_V4L=ON
+            # -DENABLE_V4L=ON                         # <-- UNUSED (warning)
             # -DENABLE_ADDONS=ON                      # <-- UNUSED (warning)
             # -DENABLE_TESTS=ON                       # <-- UNUSED (warning, Kodi uses BUILD_TESTING instead)
           )
 
           # Run cmake with the flags (array expansion preserves each -D as separate arg)
-          cmake -S ../xbmc -B . -G Ninja "${CMFLAGS[@]}"
+          #cmake -S ../xbmc -B . -G Ninja "${CMFLAGS[@]}:
+          # create a helper CMake include that registers imported gtest targets if system libs exist
+          cat > "${GITHUB_WORKSPACE}/cmake_force_gtest_targets.cmake" <<'EOF'
+          # Create IMPORTED targets for gtest/gtest_main if they don't exist but system libs are available.
+          if(NOT TARGET gtest)
+            find_path(GTEST_INCLUDE_DIR NAMES gtest/gtest.h gtest.h PATHS /usr/include /usr/local/include)
+            find_library(GTEST_LIBRARY NAMES gtest libgtest libgtest.a libgtest_main libgtest_main.a PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
+            if(GTEST_LIBRARY AND GTEST_INCLUDE_DIR)
+              add_library(gtest STATIC IMPORTED)
+              set_target_properties(gtest PROPERTIES IMPORTED_LOCATION "${GTEST_LIBRARY}")
+              target_include_directories(gtest INTERFACE "${GTEST_INCLUDE_DIR}")
+              if(NOT TARGET gtest_main)
+                add_library(gtest_main STATIC IMPORTED)
+                set_target_properties(gtest_main PROPERTIES IMPORTED_LOCATION "${GTEST_LIBRARY}")
+                target_include_directories(gtest_main INTERFACE "${GTEST_INCLUDE_DIR}")
+              endif()
+              message(STATUS "cmake_force_gtest_targets: created imported targets gtest and gtest_main -> ${GTEST_LIBRARY}")
+            else()
+              message(STATUS "cmake_force_gtest_targets: system gtest lib/header not found; no imported targets created")
+            endif()
+          endif()
+          EOF
+
+          # Run cmake with the flags (include the helper so imported gtest target exists if libs are installed)
+          cmake -S ../xbmc -B . -G Ninja -DCMAKE_PROJECT_INCLUDE="${GITHUB_WORKSPACE}/cmake_force_gtest_targets.cmake" "${CMFLAGS[@]}"
+          
 
 
           # parallel build with verbose output; on failure show last lines + run single-job
