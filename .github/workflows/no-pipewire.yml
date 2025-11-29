@@ -113,9 +113,9 @@ jobs:
 
           mkdir -p build
           cd build
-          rm -rf *
+          rm -rf * || true
 
-          cmake ..xbmc \
+          cmake -S ../xbmc -B . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
             -DCORE_PLATFORM_NAME=x11 \
@@ -136,13 +136,28 @@ jobs:
             -DENABLE_ADDONS=ON \
             -DENABLE_TESTS=OFF
 
-          cmake --build . -- -j$(getconf _NPROCESSORS_ONLN)
+          # build with logging + single-job fallback to surface first error
+          echo "Starting parallel build..."
+          ninja -v -j "$(nproc)" 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
+          if [ "${PIPESTATUS[0]}" != "0" ]; then
+            echo "=== PARALLEL BUILD FAILED: Showing last 400 lines ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-output.txt" || true
 
+            echo "=== Running single-job build to show first error ==="
+            ninja -C . -t clean || true
+            ninja -v -j1 2>&1 | tee "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            echo "=== last 400 lines of single-job run ==="
+            tail -n 400 "${GITHUB_WORKSPACE}/kodi-build-single.txt" || true
+            exit 1
+          fi
+
+          # install into staging dir using DESTDIR
           STAGING_DIR="${GITHUB_WORKSPACE}/staging"
           mkdir -p "${STAGING_DIR}"
           DESTDIR="${STAGING_DIR}" ninja install
 
           echo "${VERSION}" > "${GITHUB_WORKSPACE}/build_version.txt"
+
 
       - name: Prepare Debian package contents (desktop entry + scripts)
         run: |
