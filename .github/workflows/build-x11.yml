@@ -136,7 +136,7 @@ jobs:
             libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev
             libspdlog-dev
             # extras (from your previous list)
-            libexiv2-dev libfstrcmp-dev libiso9660-dev
+            libexiv2-dev libfstrcmp-dev libiso9660-dev libtag1-dev
             # features that were NO in previous log (avoid liblircclient-dev)
             libcap-dev libcec-dev lirc liblirc-dev
             libavahi-compat-libdnssd-dev libpipewire-0.3-dev libsndio-dev
