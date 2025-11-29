@@ -12,9 +12,11 @@ jobs:
 
     env:
       REPO: xbmc/xbmc
+      KODI_BRANCH: 22.0a2-Piers
       KODI_INSTALL_PREFIX: /usr
       PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig
       LD_LIBRARY_PATH: /usr/local/lib:/usr/local/lib/x86_64-linux-gnu
+      DEBIAN_FRONTEND: noninteractive
 
     steps:
       - name: Checkout packaging repo
@@ -22,73 +24,60 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Clone xbmc/xbmc (shallow)
+      - name: Clone xbmc/xbmc (shallow, branch fallback)
         run: |
-          git clone --depth 1 --branch 22.0a2-Piers https://github.com/xbmc/xbmc.git xbmc
+          set -euo pipefail
+          echo "Cloning ${REPO} branch ${KODI_BRANCH} (shallow)"
+          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${KODI_BRANCH}" >/dev/null 2>&1; then
+            git clone --depth 1 --branch "${KODI_BRANCH}" "https://github.com/${REPO}.git" xbmc
+          else
+            echo "Branch ${KODI_BRANCH} not found, cloning default branch shallow"
+            git clone --depth 1 "https://github.com/${REPO}.git" xbmc
+          fi
 
       - name: Install build & packaging dependencies (full)
         run: |
           set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-
           sudo apt-get update
 
           sudo apt-get install -y --no-install-recommends \
-            # build basics
             build-essential cmake ninja-build pkg-config git python3 python3-pip \
             autoconf automake libtool gettext curl ca-certificates \
-            # meson installed via pip --user in later step; include python dev tools
             python3-setuptools python3-wheel python3-venv \
-            # X / GL / Wayland / rendering
             libx11-dev libxrandr-dev libxinerama-dev libxss-dev libxext-dev \
             libgl1-mesa-dev libgles2-mesa-dev libwayland-dev libxkbcommon-dev \
             libvulkan-dev libvulkan1 vulkan-utils \
-            # audio basics
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
             libssl-dev libcurl4-openssl-dev libsmbclient-dev libnfs-dev \
-            # ffmpeg / libav
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
             libavfilter-dev libavdevice-dev libavresample-dev \
-            # gstreamer
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-plugins-ugly gstreamer1.0-libav \
             gir1.2-gstreamer-1.0 gobject-introspection libgirepository1.0-dev \
-            # codecs / DSP / audio extras
             libopus-dev libsndfile1-dev libfftw3-dev libmysofa-dev \
             libwebrtc-audio-processing-dev libsbc-dev libcanberra-dev \
             libreadline-dev libopenal-dev \
-            # JACK / realtime
             libjack-jackd2-dev libsamplerate0-dev libsoxr-dev \
-            # pipewire extras & system integration
-            libsystemd-dev libsystemd-dev libselinux-dev \
+            libsystemd-dev libselinux-dev \
             libavahi-client-dev libusb-1.0-0-dev \
-            # bluetooth / discovery
-            libbluetooth-dev libavahi-client-dev \
-            # video capture / camera
+            libbluetooth-dev \
             libcamera-dev libv4l-dev v4l-utils \
-            # apparmor / snap support
             libapparmor-dev libsnapd-glib-dev \
-            # special / optional hardware support
             libffado-dev libasound2-plugins \
-            # documentation / introspection
             doxygen python3-sphinx python3-lxml \
-            # packaging/tooling
-            dpkg-dev fakeroot zip ccache pkg-config \
-            # misc helpful libs
-            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev libreadline-dev \
-            || true
+            dpkg-dev fakeroot zip ccache \
+            libfmt-dev libboost-all-dev libglib2.0-dev libc6-dev \
+            || { echo "apt-get install failed"; exit 1; }
 
           # Clean apt lists to reduce disk usage (important on CI)
           sudo rm -rf /var/lib/apt/lists/*
-
 
       - name: Build PipeWire 1.5.84 (robust, use meson CLI)
         run: |
           set -euo pipefail
 
-          # install meson+ninja into user's local bin and ensure it is used
-          python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
+          python3 -m pip install --user --upgrade "meson>=1.1.0"
           export PATH="$HOME/.local/bin:$PATH"
           echo "PATH=$PATH"
           echo "Which meson: $(command -v meson || echo 'none')"
@@ -101,29 +90,20 @@ jobs:
           rm -rf "${PW_DIR}"
           mkdir -p "${PW_DIR}"
 
-          # Clone tag without 'v' first, then try with 'v', else shallow clone default
           if git ls-remote --tags --refs "${PW_REPO}" "${PW_VERSION}" | grep -q .; then
-            echo "Cloning tag ${PW_VERSION}"
             git clone --depth 1 --branch "${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
           elif git ls-remote --tags --refs "${PW_REPO}" "v${PW_VERSION}" | grep -q .; then
-            echo "Cloning tag v${PW_VERSION}"
             git clone --depth 1 --branch "v${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
           else
-            echo "Tags not found; falling back to shallow clone of default branch"
             git clone --depth 1 "${PW_REPO}" "${PW_DIR}"
           fi
 
           cd "${PW_DIR}"
-
-          # remove stale meson state to avoid pickle/module mismatch
           rm -rf build meson-private || true
 
-          # Use meson CLI (not python3 -m meson)
-          meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || \
-            meson setup build -Ddefault_library=shared
-
+          meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || meson setup build -Ddefault_library=shared
           meson compile -C build -v
-          sudo "$HOME/.local/bin/meson" install -C build
+          sudo "${HOME}/.local/bin/meson" install -C build
 
           echo "pipewire: $(pkg-config --modversion pipewire 2>/dev/null || echo 'not-found')"
           echo "spa-0.2: $(pkg-config --modversion spa-0.2 2>/dev/null || echo 'not-found')"
@@ -148,6 +128,7 @@ jobs:
             -DCORE_PLATFORM_NAME=x11 \
             -DAPP_RENDER_SYSTEM=gl \
             -DENABLE_INTERNAL_FFMPEG=ON \
+            -DENABLE_INTERNAL_DAV1D=ON \
             -DENABLE_INTERNAL_FLATBUFFERS=ON \
             -DENABLE_INTERNAL_FMT=ON \
             -DENABLE_INTERNAL_CROSSGUID=ON \
@@ -180,7 +161,6 @@ jobs:
           mkdir -p "${PKG_DIR}${KODI_INSTALL_PREFIX}"
           cp -a "${STAGING_DIR}${KODI_INSTALL_PREFIX}/." "${PKG_DIR}${KODI_INSTALL_PREFIX}/"
 
-          # Ensure desktop entry (Pantheon launcher)
           DESKTOP_DIR="${PKG_DIR}/usr/share/applications"
           ICON_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
           mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
@@ -199,12 +179,10 @@ jobs:
           StartupNotify=true
           DESKTOP_EOF
 
-          # Try to install an icon if present in built tree (common path)
           if [ -f "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" ]; then
             install -D -m 0644 "${PKG_DIR}${KODI_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps/kodi.png" "${ICON_DIR}/kodi.png"
           fi
 
-          # Prepare DEBIAN control and maintainer scripts
           mkdir -p "${PKG_DIR}/DEBIAN"
           if [ -f packaging/control.template ]; then
             sed -e "s|%VERSION%|${VERSION}|g" \
@@ -223,7 +201,6 @@ jobs:
             sed -i "s|PLACEHOLDER_VERSION|${VERSION}|g" "${PKG_DIR}/DEBIAN/control"
           fi
 
-          # If packaging scripts exist in repo, copy them; otherwise create a minimal postinst
           if [ -f packaging/postinst ]; then
             install -m 0755 packaging/postinst "${PKG_DIR}/DEBIAN/postinst"
           else
@@ -245,7 +222,7 @@ jobs:
             install -m 0755 packaging/prerm "${PKG_DIR}/DEBIAN/prerm"
           fi
 
-          chmod -R 0755 "${PKG_DIR}/DEBIAN"
+          chmod 0644 "${PKG_DIR}/DEBIAN/control" || true
 
       - name: Build .deb package
         run: |
