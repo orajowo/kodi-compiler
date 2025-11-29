@@ -236,57 +236,58 @@ jobs:
           # -------------------------
           # CMake configuration
           # -------------------------
-          # I enabled the common internal libraries here. If CMake reports any
-          # "Unknown CMake option" remove/adjust that particular -DENABLE_INTERNAL_* flag.
-          cmake -S ../xbmc -B . -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX} \
-            -DCORE_PLATFORM_NAME=x11 \
-            -DAPP_RENDER_SYSTEM=gl \
-            \
-            # Core: gunakan internal ffmpeg + semua helper penting
-            -DENABLE_INTERNAL_FFMPEG=ON \
-            -DENABLE_INTERNAL_DAV1D=ON \
-            -DENABLE_INTERNAL_FLATBUFFERS=ON \
-            -DENABLE_INTERNAL_FMT=ON \
-            -DENABLE_INTERNAL_CROSSGUID=ON \
-            -DENABLE_INTERNAL_TEXTPACKER=ON \
-            -DENABLE_INTERNAL_JSONSCHEMAS=ON \
-            \
-            # Helper/optional internals (sesuaikan kalau CMake laporkan unknown option)
-            -DENABLE_INTERNAL_TINYXML2=ON \
-            -DENABLE_INTERNAL_TINYXML=ON \
-            -DENABLE_INTERNAL_UDFREAD=ON \
-            -DENABLE_INTERNAL_SPDLOG=ON \
-            -DENABLE_INTERNAL_MICROHTTPD=ON \
-            -DENABLE_INTERNAL_NFS=ON \
-            -DENABLE_INTERNAL_LIBOGG=ON \
-            -DENABLE_INTERNAL_LIBVORBIS=ON \
-            -DENABLE_INTERNAL_LIBJPEG=ON \
-            -DENABLE_INTERNAL_LIBPNG=ON \
-            -DENABLE_INTERNAL_PCRE2=ON \
-            -DENABLE_INTERNAL_NLOHMANNJSON=ON \
-            -DENABLE_INTERNAL_FSTRCMP=ON \
-            -DENABLE_INTERNAL_EXIV2=ON \
-            -DENABLE_INTERNAL_CURL=ON \
-            -DENABLE_INTERNAL_TAGLIB=ON \
-            \
-            # Testing/tools: (OFF di CI release build kecuali kamu butuh unit tests)
-            -DENABLE_INTERNAL_GTEST=ON \
-            \
-            # Platform/features (sesuaikan sesuai kebutuhan)
-            -DENABLE_ALSA=ON \
-            -DENABLE_PULSEAUDIO=ON \
-            -DENABLE_XRANDR=ON \
-            -DENABLE_VAAPI=ON \
-            -DENABLE_VDPAU=OFF \
-            -DENABLE_AVAHI=ON \
-            -DENABLE_PIPEWIRE=ON \
-            -DENABLE_V4L=ON \
-            -DENABLE_ADDONS=ON \
+          # safe: build cmake flags into a variable and run cmake once
+          CMFLAGS=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_INSTALL_PREFIX=${KODI_INSTALL_PREFIX}
+            -DCORE_PLATFORM_NAME=x11
+            -DAPP_RENDER_SYSTEM=gl
+          
+            # Core: gunakan internal / sistem sesuai kebutuhan
+            -DENABLE_INTERNAL_FFMPEG=ON
+            -DENABLE_INTERNAL_DAV1D=ON
+            -DENABLE_INTERNAL_FLATBUFFERS=ON
+            -DENABLE_INTERNAL_FMT=ON
+            -DENABLE_INTERNAL_CROSSGUID=ON
+            -DENABLE_INTERNAL_TEXTPACKER=ON
+            -DENABLE_INTERNAL_JSONSCHEMAS=ON
+          
+            # Helper/optional internals
+            -DENABLE_INTERNAL_TINYXML2=ON
+            -DENABLE_INTERNAL_TINYXML=ON
+            -DENABLE_INTERNAL_UDFREAD=ON
+            -DENABLE_INTERNAL_SPDLOG=ON
+            -DENABLE_INTERNAL_MICROHTTPD=ON
+            -DENABLE_INTERNAL_NFS=ON
+            -DENABLE_INTERNAL_LIBOGG=ON
+            -DENABLE_INTERNAL_LIBVORBIS=ON
+            -DENABLE_INTERNAL_LIBJPEG=ON
+            -DENABLE_INTERNAL_LIBPNG=ON
+            -DENABLE_INTERNAL_PCRE2=ON
+            -DENABLE_INTERNAL_NLOHMANNJSON=ON
+            -DENABLE_INTERNAL_FSTRCMP=ON
+            -DENABLE_INTERNAL_EXIV2=ON
+            -DENABLE_INTERNAL_CURL=ON
+            -DENABLE_INTERNAL_TAGLIB=ON
+          
+            # Testing/tools
+            -DENABLE_INTERNAL_GTEST=ON
+          
+            # Platform/features
+            -DENABLE_ALSA=ON
+            -DENABLE_PULSEAUDIO=ON
+            -DENABLE_XRANDR=ON
+            -DENABLE_VAAPI=ON
+            -DENABLE_VDPAU=OFF
+            -DENABLE_AVAHI=ON
+            -DENABLE_PIPEWIRE=ON
+            -DENABLE_V4L=ON
+            -DENABLE_ADDONS=ON
             -DENABLE_TESTS=OFF
-
-          # If CMake warns about unused variables, run: cmake -LA | grep -i internal
+          )
+          
+          # Run cmake with the flags (array expansion preserves each -D as separate arg)
+          cmake -S ../xbmc -B . -G Ninja "${CMFLAGS[@]}"
 
           # parallel build with verbose output; on failure show last lines + run single-job
           echo "Starting parallel build..."
