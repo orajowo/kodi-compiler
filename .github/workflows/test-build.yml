@@ -42,51 +42,52 @@ jobs:
             libvdpau-dev libva-glx2 \
             dpkg-dev fakeroot zip ccache || true
 
-      - name: Build PipeWire 1.5.84 (meson version-safe)
+      - name: Build PipeWire 1.5.84 (robust, use meson CLI)
         run: |
           set -euo pipefail
 
-          # install meson & ninja into user's local bin and ensure it's used
+          # ensure meson & ninja installed into user's local bin and used
           python3 -m pip install --user --upgrade "meson>=1.1.0" ninja
           export PATH="$HOME/.local/bin:$PATH"
-
-          # debug: which meson and version (helps if something goes wrong)
+          echo "PATH=$PATH"
           echo "Which meson: $(command -v meson || echo 'none')"
-          echo "Meson CLI version: $(meson --version 2>/dev/null || echo 'meson CLI missing')"
-          python3 -c "import mesonbuild, sys; print('meson module:', getattr(mesonbuild, '__version__', 'unknown'))" || true
+          meson --version || echo "meson CLI not found"
 
           PW_VERSION="1.5.84"
           PW_REPO="https://gitlab.freedesktop.org/pipewire/pipewire.git"
           PW_DIR="${RUNNER_TEMP:-/tmp}/pipewire-src"
+
           rm -rf "${PW_DIR}"
           mkdir -p "${PW_DIR}"
 
-          # clone correct tag (prefer no-v tag as you indicated)
+          # Clone tag without 'v' first, then try with 'v', else shallow clone default
           if git ls-remote --tags --refs "${PW_REPO}" "${PW_VERSION}" | grep -q .; then
+            echo "Cloning tag ${PW_VERSION}"
             git clone --depth 1 --branch "${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
           elif git ls-remote --tags --refs "${PW_REPO}" "v${PW_VERSION}" | grep -q .; then
+            echo "Cloning tag v${PW_VERSION}"
             git clone --depth 1 --branch "v${PW_VERSION}" "${PW_REPO}" "${PW_DIR}"
           else
+            echo "Tags not found; falling back to shallow clone of default branch"
             git clone --depth 1 "${PW_REPO}" "${PW_DIR}"
           fi
 
           cd "${PW_DIR}"
 
-          # remove any stale build dir / meson-private to avoid pickle mismatch
-          rm -rf build meson-private
+          # remove stale meson state to avoid pickle/module mismatch
+          rm -rf build meson-private || true
 
-          # Use python3 -m meson to ensure same Python package is used
-          python3 -m meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || \
-            python3 -m meson setup build -Ddefault_library=shared
+          # Use meson CLI (not python3 -m meson) to avoid python module mismatch
+          meson setup build -Ddefault_library=shared -Dsystemd=true -Dman=false || \
+            meson setup build -Ddefault_library=shared
 
-          # build and install using the same meson module
-          python3 -m meson compile -C build -v
-          sudo python3 -m meson install -C build
+          # Build and install using meson CLI
+          meson compile -C build -v
+          sudo meson install -C build
 
-          # verify installation
-          echo "pipewire (pkg-config):" && pkg-config --modversion pipewire || echo "pipewire not found"
-          echo "spa-0.2 (pkg-config):" && pkg-config --modversion spa-0.2 || echo "spa-0.2 not found"
-
+          # report installed versions
+          echo "pipewire: $(pkg-config --modversion pipewire 2>/dev/null || echo 'not-found')"
+          echo "spa-0.2: $(pkg-config --modversion spa-0.2 2>/dev/null || echo 'not-found')"
 
       - name: Configure, build and install Kodi into staging
         env:
