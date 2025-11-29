@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+
+# Nothing special, but needed for clean uninstall
+echo "Removing Kodi custom build..."
+
+exit 0
