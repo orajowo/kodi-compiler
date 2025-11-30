@@ -13,17 +13,45 @@ OUT_DIR="${3:-${GITHUB_WORKSPACE:-.}/out}"
 VERSION="${4:-unknown}"
 PKG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kodi-deb.XXXXXX")"
 
+# safe cleanup: no recursion, preserve on failure
 cleanup() {
-  rc=$?
-  # keep package dir if failure for debug
-  if [ $rc -ne 0 ]; then
-    echo "ERROR: packaging failed (exit $rc). Packaging tree preserved at: ${PKG_DIR}" >&2
-  else
-    rm -rf "${PKG_DIR}"
+  rc="${1:-0}"
+
+  if [ "${rc}" -ne 0 ]; then
+    echo "ERROR: packaging failed (exit ${rc}). Packaging tree preserved at: ${PKG_DIR}" >&2
+    return 0
   fi
-  exit $rc
+
+  # Try to delete normally
+  if rm -rf "${PKG_DIR}" 2>/dev/null; then
+    return 0
+  fi
+
+  # If removal failed (permission issues), try to chown then remove
+  if chown -R "$(id -u):$(id -g)" "${PKG_DIR}" 2>/dev/null; then
+    rm -rf "${PKG_DIR}" 2>/dev/null || {
+      echo "Warning: failed to rm -rf ${PKG_DIR} after chown (permissions?), leaving it for inspection." >&2
+    }
+    return 0
+  fi
+
+  # Final fallback: try sudo rm -rf (CI runners usually have sudo)
+  if command -v sudo >/dev/null 2>&1; then
+    echo "chown failed; attempting to remove ${PKG_DIR} with sudo..."
+    if sudo rm -rf "${PKG_DIR}"; then
+      return 0
+    else
+      echo "Warning: sudo rm -rf failed; packaging tree preserved at: ${PKG_DIR}" >&2
+    fi
+  else
+    echo "Warning: cannot remove ${PKG_DIR} because of permissions and sudo not available" >&2
+  fi
+
+  return 0
 }
-trap cleanup INT TERM EXIT
+
+# Correct trap (no recursion) — pass exit code to cleanup
+trap 'rc=$?; cleanup "$rc"' EXIT
 
 echo "Packaging:"
 echo "  STAGING_DIR=${STAGING_DIR}"
@@ -76,15 +104,18 @@ mkdir -p "${DEBIAN_DIR}"
 # control file: prefer packaging/control.template if present
 REPO_PACKAGING_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="${REPO_PACKAGING_DIR}/control.template"
+
+ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+
 if [ -f "${TEMPLATE}" ]; then
-  sed -e "s|%VERSION%|${VERSION}|g" -e "s|%ARCH%|amd64|g" "${TEMPLATE}" > "${DEBIAN_DIR}/control"
+  sed -e "s|%VERSION%|${VERSION}|g" -e "s|%ARCH%|${ARCH}|g" "${TEMPLATE}" > "${DEBIAN_DIR}/control"
 else
-  cat > "${DEBIAN_DIR}/control" <<'CONTROL_EOF'
+  cat > "${DEBIAN_DIR}/control" <<CONTROL_EOF
 Package: kodi
 Version: PLACEHOLDER_VERSION
 Section: video
 Priority: optional
-Architecture: amd64
+Architecture: ${ARCH}
 Maintainer: Kodi Packager <noreply@example.com>
 Description: Kodi Media Center (custom build)
 CONTROL_EOF
@@ -115,24 +146,20 @@ fi
 
 # set safe perms
 chmod -R 0755 "${DEBIAN_DIR}"
-# Ensure files owned by root in package (dpkg-deb doesn't require root but ownership isn't relevant inside the .deb)
+[ -f "${DEBIAN_DIR}/control" ] && chmod 0644 "${DEBIAN_DIR}/control"
+
 # Build .deb with fakeroot for correct metadata
 mkdir -p "${OUT_DIR}"
 
-PKG_NAME="kodi-elementary-${VERSION}_amd64.deb"
+PKG_NAME="kodi-elementary-${VERSION}_${ARCH}.deb"
 echo "Building ${OUT_DIR}/${PKG_NAME} ..."
 fakeroot dpkg-deb --build "${PKG_DIR}" "${OUT_DIR}/${PKG_NAME}"
 
 # optional: compute shared library dependencies using dpkg-shlibdeps
-# Instead of extracting the .deb (which can create root-owned files), run dpkg-shlibdeps
-# directly against the packaged tree (PKG_DIR). This avoids creating /tmp/deb-unpack.* and
-# avoids permission errors.
 if command -v dpkg-shlibdeps >/dev/null 2>&1; then
   echo "Running dpkg-shlibdeps to compute shared library dependencies (optional)"
   BIN_PATH="${PKG_DIR}${PREFIX}/usr/bin/kodi"
   if [ -x "${BIN_PATH}" ]; then
-    # dpkg-shlibdeps expects a path to one or more binaries; -O prints the dependency string
-    # Append the resolved shlibs to control file (non-fatal)
     echo " -> computing shlibs for: ${BIN_PATH}"
     dpkg-shlibdeps -O "${BIN_PATH}" >> "${DEBIAN_DIR}/control" 2>/dev/null || {
       echo "dpkg-shlibdeps failed (non-fatal), continuing..."
